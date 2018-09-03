@@ -190,6 +190,7 @@ import           Pos.Core.Genesis (FakeAvvmOptions (..), GenesisAvvmBalances (..
                                    GenesisSpec (..), GenesisVssCertificatesMap (..),
                                    GenesisWStakeholders (..), TestnetBalanceOptions (..),
                                    mkGenesisDelegation, mkGenesisSpec)
+import           Pos.Core.NetworkMagic (NetworkMagic (..))
 import           Pos.Core.ProtocolConstants (ProtocolConstants (..), VssMaxTTL (..), VssMinTTL (..))
 import           Pos.Core.Slotting (EpochIndex (..), EpochOrSlot (..), FlatSlotId,
                                     LocalSlotIndex (..), SlotCount (..), SlotId (..), TimeDiff (..),
@@ -341,9 +342,13 @@ genMainToSign pm pc =
 ----------------------------------------------------------------------------
 
 genAddrAttributes :: Gen AddrAttributes
-genAddrAttributes = AddrAttributes <$> hap <*> genAddrStakeDistribution
+genAddrAttributes = AddrAttributes <$> hap <*> genAddrStakeDistribution <*> nm
   where
     hap = Gen.maybe genHDAddressPayload
+    nm = pure fixedNM
+    -- nm  = Gen.choice [ pure NMNothing
+    --                  , NMJust <$> genWord8
+    --                  ]
 
 genAddress :: Gen Address
 genAddress = makeAddress <$> genAddrSpendingData <*> genAddrAttributes
@@ -1057,3 +1062,7 @@ genWord32 = Gen.word32 Range.constantBounded
 
 genWord8 :: Gen Word8
 genWord8 = Gen.word8 Range.constantBounded
+
+
+fixedNM :: NetworkMagic
+fixedNM = NMNothing
