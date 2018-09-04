@@ -20,6 +20,7 @@ import qualified Data.Map.Strict as Map
 import           Pos.Chain.Block (Blund)
 import           Pos.Chain.Txp (Utxo)
 import           Pos.Core (mkCoin)
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Core.Slotting (Timestamp)
 import           Pos.Crypto.Signing
 
@@ -51,10 +52,11 @@ import           Cardano.Wallet.WalletLayer (CreateWallet (..),
 import           Cardano.Wallet.WalletLayer.Kernel.Conv
 
 createWallet :: MonadIO m
-             => Kernel.PassiveWallet
+             => NetworkMagic
+             -> Kernel.PassiveWallet
              -> CreateWallet
              -> m (Either CreateWalletError V1.Wallet)
-createWallet wallet newWalletRequest = liftIO $ do
+createWallet nm wallet newWalletRequest = liftIO $ do
     now  <- liftIO getCurrentTimestamp
     case newWalletRequest of
         CreateWallet newWallet@V1.NewWallet{..} ->
@@ -71,7 +73,8 @@ createWallet wallet newWalletRequest = liftIO $ do
     create :: V1.NewWallet -> Timestamp -> IO (Either CreateWalletError V1.Wallet)
     create newWallet@V1.NewWallet{..} now = runExceptT $ do
       root <- withExceptT CreateWalletError $ ExceptT $
-                Kernel.createHdWallet wallet
+                Kernel.createHdWallet nm
+                                      wallet
                                       (mnemonic newWallet)
                                       (spendingPassword newwalSpendingPassword)
                                       (fromAssuranceLevel newwalAssuranceLevel)
@@ -115,6 +118,7 @@ createWallet wallet newWalletRequest = liftIO $ do
             Just hdAddress -> do
                 (root, coins) <- withExceptT (CreateWalletError . Kernel.CreateWalletFailed) $ ExceptT $
                     restoreWallet
+                      nm
                       wallet
                       (pwd /= emptyPassphrase)
                       (hdAddress ^. HD.hdAddressAddress . fromDb)
@@ -153,15 +157,16 @@ createWallet wallet newWalletRequest = liftIO $ do
 
 -- Synchronously restore the wallet balance, and begin to
 -- asynchronously reconstruct the wallet's history.
-prefilter :: EncryptedSecretKey
+prefilter :: NetworkMagic
+          -> EncryptedSecretKey
           -> Kernel.PassiveWallet
           -> WalletId
           -> Blund
           -> IO (Map HD.HdAccountId PrefilteredBlock, [TxMeta])
-prefilter esk wallet wId blund =
+prefilter nm esk wallet wId blund =
     blundToResolvedBlock (wallet ^. Kernel.walletNode) blund <&> \case
         Nothing -> (Map.empty, [])
-        Just rb -> prefilterBlock rb wId esk
+        Just rb -> prefilterBlock nm rb wId esk
 
 -- | Updates the 'SpendingPassword' for this wallet.
 updateWallet :: MonadIO m

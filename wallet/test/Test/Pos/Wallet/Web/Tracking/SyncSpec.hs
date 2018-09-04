@@ -19,9 +19,11 @@ import           Test.QuickCheck (Arbitrary (..), Property, choose, oneof,
                      sublistOf, suchThat, vectorOf, (===))
 import           Test.QuickCheck.Monadic (pick)
 
+import           Pos.Chain.Genesis as Genesis (Config (..))
 import           Pos.Chain.Txp (TxpConfiguration (..))
 import           Pos.Core (Address, BlockCount (..))
 import           Pos.Core.Chrono (nonEmptyOldestFirst, toNewestFirst)
+import           Pos.Core.NetworkMagic (makeNetworkMagic)
 import           Pos.Crypto (emptyPassphrase)
 import           Pos.DB.Block (rollbackBlocks)
 import           Pos.Launcher (HasConfigurations)
@@ -70,8 +72,9 @@ twoApplyTwoRollbacksSpec = walletPropertySpec twoApplyTwoRollbacksDesc $ do
     -- way of restoring.
     void $ importSomeWallets (pure emptyPassphrase)
     secretKeys <- lift getSecretKeysPlain
+    let nm = makeNetworkMagic $ configProtocolMagic dummyConfig
     lift $ forM_ secretKeys $ \sk ->
-        syncWalletWithBlockchain dummyConfig . newSyncRequest . keyToWalletDecrCredentials $ KeyForRegular sk
+        syncWalletWithBlockchain dummyConfig . newSyncRequest . (keyToWalletDecrCredentials nm) $ KeyForRegular sk
 
     -- Testing starts here
     genesisWalletDB <- lift WS.askWalletSnapshot

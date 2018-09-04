@@ -10,6 +10,7 @@ import           Data.Time.Units (Second)
 
 import           Pos.Chain.Txp (Tx)
 import           Pos.Core (Address, Coin, TxFeePolicy)
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Crypto (PassPhrase)
 
 import           Cardano.Wallet.API.V1.Types (unV1)
@@ -30,20 +31,21 @@ import           Cardano.Wallet.WalletLayer.Kernel.Conv
 
 -- | Generates a new transaction @and submit it as pending@.
 pay :: MonadIO m
-    => Kernel.ActiveWallet
+    => NetworkMagic
+    -> Kernel.ActiveWallet
     -> PassPhrase
     -> InputGrouping
     -> ExpenseRegulation
     -> V1.Payment
     -> m (Either NewPaymentError (Tx, TxMeta))
-pay activeWallet pw grouping regulation payment = liftIO $ do
+pay nm activeWallet pw grouping regulation payment = liftIO $ do
     policy <- Node.getFeePolicy (Kernel.walletPassive activeWallet ^. Kernel.walletNode)
     limitExecutionTimeTo (60 :: Second) NewPaymentTimeLimitReached $
       runExceptT $ do
         (opts, accId, payees) <- withExceptT NewPaymentWalletIdDecodingFailed $
                                    setupPayment policy grouping regulation payment
         withExceptT NewPaymentError $ ExceptT $
-          Kernel.pay activeWallet pw opts accId payees
+          Kernel.pay nm activeWallet pw opts accId payees
 
 -- | Estimates the fees for a payment.
 estimateFees :: MonadIO m
@@ -66,10 +68,12 @@ estimateFees activeWallet grouping regulation payment = liftIO $ do
 -- Implementation note: No need for a time limit here, redemption does not run
 -- coin selection.
 redeemAda :: MonadIO m
-          => Kernel.ActiveWallet
+          => NetworkMagic
+          -> Kernel.ActiveWallet
           -> V1.Redemption
           -> m (Either RedeemAdaError (Tx, TxMeta))
-redeemAda aw
+redeemAda nm
+          aw
           V1.Redemption{
               redemptionRedemptionCode   = code
             , redemptionMnemonic         = mMnemonic
@@ -84,12 +88,12 @@ redeemAda aw
         redeemKey <- withExceptT RedeemAdaInvalidRedemptionCode $
                        fromRedemptionCode code
         withExceptT RedeemAdaError $ ExceptT $ liftIO $
-          Kernel.redeemAda aw accId spendingPassword redeemKey
+          Kernel.redeemAda nm aw accId spendingPassword redeemKey
       Just mnemonic -> do
         redeemKey <- withExceptT RedeemAdaInvalidRedemptionCode $
                        fromRedemptionCodePaper code mnemonic
         withExceptT RedeemAdaError $ ExceptT $ liftIO $
-          Kernel.redeemAda aw accId spendingPassword redeemKey
+          Kernel.redeemAda nm aw accId spendingPassword redeemKey
 
 {-------------------------------------------------------------------------------
   Internal auxiliary

@@ -72,6 +72,7 @@ import           Pos.Chain.Txp (TxIn (..), TxOut (..), TxOutAux (..), Utxo,
 import           Pos.Core as Core (Address, BlockCount (..), Coin, SlotId,
                      flattenSlotId, getCurrentTimestamp, mkCoin,
                      unsafeIntegerToCoin)
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Crypto (EncryptedSecretKey)
 import           Pos.DB.Block (getFirstGenesisBlockHash, getUndo,
                      resolveForwardLink)
@@ -96,7 +97,8 @@ import           Pos.Util.Trace (Severity (Error))
 -- users' spending passwords.
 -- During migration, instead, you can pick one of the @existing@ addresses
 -- in the legacy wallet layer, and use it as input.
-restoreWallet :: Kernel.PassiveWallet
+restoreWallet :: NetworkMagic
+              -> Kernel.PassiveWallet
               -> Bool
               -- ^ Did this wallet have a spending password set?
               -> Core.Address
@@ -105,19 +107,19 @@ restoreWallet :: Kernel.PassiveWallet
               -> HD.AssuranceLevel
               -> EncryptedSecretKey
               -> IO (Either CreateHdRootError (HD.HdRoot, Coin))
-restoreWallet pw hasSpendingPassword defaultCardanoAddress name assurance esk = do
+restoreWallet nm pw hasSpendingPassword defaultCardanoAddress name assurance esk = do
     coreConfig <- getCoreConfig (pw ^. walletNode)
     walletInitInfo <- withNodeState (pw ^. walletNode) $ getWalletInitInfo coreConfig wkey
     case walletInitInfo of
       WalletCreate utxos -> do
-        root <- createWalletHdRnd pw hasSpendingPassword defaultCardanoAddress name assurance esk $
+        root <- createWalletHdRnd nm pw hasSpendingPassword defaultCardanoAddress name assurance esk $
                 \root defaultHdAccount defaultHdAddress ->
                       Left $ CreateHdWallet root defaultHdAccount defaultHdAddress utxos
         return $ fmap (, mkCoin 0) root
       WalletRestore utxos tgt -> do
           -- Create the wallet for restoration, deleting the wallet first if it
           -- already exists.
-          mRoot <- createWalletHdRnd pw hasSpendingPassword defaultCardanoAddress name assurance esk $
+          mRoot <- createWalletHdRnd nm pw hasSpendingPassword defaultCardanoAddress name assurance esk $
                   \root defaultHdAccount defaultHdAddress ->
                       Right $ RestoreHdWallet root defaultHdAccount defaultHdAddress tgt utxos
           case mRoot of
@@ -137,7 +139,7 @@ restoreWallet pw hasSpendingPassword defaultCardanoAddress name assurance esk = 
 
   where
     prefilter :: Blund -> IO (Map HD.HdAccountId PrefilteredBlock, [TxMeta])
-    prefilter = mkPrefilter pw wId esk
+    prefilter = mkPrefilter nm pw wId esk
 
     restart :: HD.HdRoot -> IO ()
     restart root = do
@@ -153,25 +155,27 @@ restoreWallet pw hasSpendingPassword defaultCardanoAddress name assurance esk = 
                 beginRestoration pw wId prefilter root Nothing tgt (restart root)
 
     wId    = WalletIdHdRnd (HD.eskToHdRootId esk)
-    wkey   = (wId, keyToWalletDecrCredentials (KeyForRegular esk))
+    wkey   = (wId, keyToWalletDecrCredentials nm (KeyForRegular esk))
 
 
-mkPrefilter :: Kernel.PassiveWallet
+mkPrefilter :: NetworkMagic
+            -> Kernel.PassiveWallet
             -> WalletId
             -> EncryptedSecretKey
             -> Blund
             -> IO (Map HD.HdAccountId PrefilteredBlock, [TxMeta])
-mkPrefilter pw wId esk blund = blundToResolvedBlock (pw ^. walletNode) blund <&> \case
+mkPrefilter nm pw wId esk blund = blundToResolvedBlock (pw ^. walletNode) blund <&> \case
     Nothing -> (M.empty, [])
-    Just rb -> prefilterBlock rb wId esk
+    Just rb -> prefilterBlock nm rb wId esk
 
 -- | Begin a restoration for a wallet that is already known. This is used
 -- to put an existing wallet back into a restoration state when something has
 -- gone wrong.
-restoreKnownWallet :: Kernel.PassiveWallet
+restoreKnownWallet :: NetworkMagic
+                   -> Kernel.PassiveWallet
                    -> HD.HdRootId
                    -> IO ()
-restoreKnownWallet pw rootId = do
+restoreKnownWallet nm pw rootId = do
     let wId = WalletIdHdRnd rootId
     lookupRestorationInfo pw wId >>= \case
         -- Restart a pre-existing restoration
@@ -183,8 +187,8 @@ restoreKnownWallet pw rootId = do
         Nothing -> Keystore.lookup wId (pw ^. walletKeystore) >>= \case
             Nothing  -> return () -- TODO (@mn): raise an error
             Just esk -> do
-                let prefilter = mkPrefilter pw wId esk
-                    wkey = (wId, keyToWalletDecrCredentials (KeyForRegular esk))
+                let prefilter = mkPrefilter nm pw wId esk
+                    wkey = (wId, keyToWalletDecrCredentials nm (KeyForRegular esk))
 
                 coreConfig <- getCoreConfig (pw ^. walletNode)
                 db <- getWalletSnapshot pw
@@ -206,12 +210,13 @@ restoreKnownWallet pw rootId = do
 -- | Take a wallet that is in an incomplete state but not restoring, and
 -- start up a restoration task for it. This is used to bring up restoration
 -- tasks for any accounts in incomplete states when the wallet starts up.
-continueRestoration :: Kernel.PassiveWallet
+continueRestoration :: NetworkMagic
+                    -> Kernel.PassiveWallet
                     -> HD.HdRoot
                     -> Maybe BlockContext
                     -> BlockContext
                     -> IO ()
-continueRestoration pw root cur tgt = do
+continueRestoration nm pw root cur tgt = do
     let wId = WalletIdHdRnd (root ^. HD.hdRootId)
     Keystore.lookup wId (pw ^. walletKeystore) >>= \case
         Nothing  ->
@@ -219,8 +224,8 @@ continueRestoration pw root cur tgt = do
             -- restoration of an unknown wallet
             return ()
         Just esk -> do
-            let prefilter = mkPrefilter pw wId esk
-                wkey      = (wId, keyToWalletDecrCredentials (KeyForRegular esk))
+            let prefilter = mkPrefilter nm pw wId esk
+                wkey      = (wId, keyToWalletDecrCredentials nm (KeyForRegular esk))
                 restart   = do
                     coreConfig <- getCoreConfig (pw ^. walletNode)
                     wii <- withNodeState (pw ^. walletNode)

@@ -13,6 +13,7 @@ import           Formatting ((%))
 import qualified Formatting as F
 
 import qualified Pos.Core as Core
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Util.Wlog (Severity (..))
 import qualified Pos.Wallet.Web.ClientTypes as WebTypes
 import qualified Pos.Wallet.Web.State.Storage as WS
@@ -172,11 +173,12 @@ resolveDbPath fp = do
 --
 -- However when @forced@ is True the migration is a all-or-nothing.
 -- If anything fails (e.g. wallet decoding, resotartion etc) the node crashes.
-migrateLegacyDataLayer :: Kernel.PassiveWallet
+migrateLegacyDataLayer :: NetworkMagic
+                       -> Kernel.PassiveWallet
                        -> FilePath
                        -> Bool
                        -> IO ()
-migrateLegacyDataLayer pw unresolvedDbPath forced = do
+migrateLegacyDataLayer nm pw unresolvedDbPath forced = do
     let logMsg = pw ^. Kernel.walletLogMessage
     logMsg Info "Starting acid state migration"
     resolved <- resolveDbPath unresolvedDbPath
@@ -212,7 +214,7 @@ migrateLegacyDataLayer pw unresolvedDbPath forced = do
                         <> show availableLen
                         <> " rootAddress(es) to migrate."
 
-                mapM_ (restore pw forced) available
+                mapM_ (restore nm pw forced) available
 
            -- Now that we have closed the DB, we can move the directory
            backupPath <- moveLegacyDB legacyDbPath
@@ -221,18 +223,20 @@ migrateLegacyDataLayer pw unresolvedDbPath forced = do
            logMsg Info $ "acid state migration succeeded. Old db backup can be found at " <> pack backupPath
 
 
-restore :: Kernel.PassiveWallet
+restore :: NetworkMagic
+        -> Kernel.PassiveWallet
         -> Bool
         -> MigrationMetadata
         -> IO ()
-restore pw forced metadata = do
+restore nm pw forced metadata = do
     let logMsg = pw ^. Kernel.walletLogMessage
         keystore = pw ^. Kernel.walletKeystore
         wId = WalletIdHdRnd (metadata ^. mmHdRootId)
     mEsk <- Keystore.lookup wId keystore
     case mEsk of
         Just esk -> do
-            res <- restoreWallet pw
+            res <- restoreWallet nm
+                                 pw
                                  (metadata ^. mmHasSpendingPassword)
                                  (metadata ^. mmDefaultAddress)
                                  (metadata ^. mmWalletName)

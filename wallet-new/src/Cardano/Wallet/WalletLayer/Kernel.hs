@@ -19,6 +19,7 @@ import qualified Formatting as F
 import           Pos.Chain.Block (Blund, blockHeader, headerHash, prevBlockL)
 import           Pos.Chain.Genesis (Config (..))
 import           Pos.Core.Chrono (OldestFirst (..))
+import           Pos.Core.NetworkMagic (NetworkMagic, makeNetworkMagic)
 import           Pos.Crypto (ProtocolMagic)
 import           Pos.Util.Wlog (Severity (Debug, Warning))
 
@@ -50,12 +51,13 @@ import qualified Cardano.Wallet.WalletLayer.Kernel.Wallets as Wallets
 -- The passive wallet cannot send new transactions.
 bracketPassiveWallet
     :: forall m n a. (MonadIO n, MonadIO m, MonadMask m)
-    => Kernel.DatabaseMode
+    => NetworkMagic
+    -> Kernel.DatabaseMode
     -> (Severity -> Text -> IO ())
     -> Keystore
     -> NodeStateAdaptor IO
     -> (PassiveWalletLayer n -> Kernel.PassiveWallet -> m a) -> m a
-bracketPassiveWallet mode logFunction keystore node f = do
+bracketPassiveWallet nm mode logFunction keystore node f = do
     Kernel.bracketPassiveWallet mode logFunction keystore node $ \w -> do
 
       -- For each wallet in a restoration state, re-start the background
@@ -74,7 +76,7 @@ bracketPassiveWallet mode logFunction keystore node f = do
                        " from checkpoint " % F.build %
                        " with target "     % F.build)
                        (root ^. hdRootId) (maybe "(genesis)" pretty src) (pretty tgt)
-                  Kernel.continueRestoration w root src tgt
+                  Kernel.continueRestoration nm w root src tgt
 
       -- Start the wallet worker
       let wai = Actions.WalletActionInterp
@@ -82,7 +84,7 @@ bracketPassiveWallet mode logFunction keystore node f = do
                     ls <- mapM (Wallets.blundToResolvedBlock node)
                         (toList (getOldestFirst blunds))
                     let mp = catMaybes ls
-                    mapM_ (Kernel.applyBlock w) mp
+                    mapM_ (Kernel.applyBlock nm w) mp
 
                  , Actions.switchToFork = \_ (OldestFirst blunds) -> do
                      -- Get the hash of the last main block before this fork.
@@ -95,7 +97,7 @@ bracketPassiveWallet mode logFunction keystore node f = do
                      bs <- catMaybes <$> mapM (Wallets.blundToResolvedBlock node)
                                              (NE.toList blunds)
 
-                     Kernel.switchToFork w (headerHash <$> oldest) bs
+                     Kernel.switchToFork nm w (headerHash <$> oldest) bs
 
                  , Actions.emit = logFunction Debug
                  }
@@ -108,7 +110,7 @@ bracketPassiveWallet mode logFunction keystore node f = do
                        -> PassiveWalletLayer n
     passiveWalletLayer w invoke = PassiveWalletLayer
         { -- Operations that modify the wallet
-          createWallet         = Wallets.createWallet         w
+          createWallet         = Wallets.createWallet         nm w
         , updateWallet         = Wallets.updateWallet         w
         , updateWalletPassword = Wallets.updateWalletPassword w
         , deleteWallet         = Wallets.deleteWallet         w
@@ -122,7 +124,7 @@ bracketPassiveWallet mode logFunction keystore node f = do
         , postponeUpdate       = Internal.postponeUpdate      w
         , waitForUpdate        = Internal.waitForUpdate       w
         , resetWalletState     = Internal.resetWalletState    w
-        , importWallet         = Internal.importWallet        w
+        , importWallet         = Internal.importWallet        nm w
         , applyBlocks          = invokeIO . Actions.ApplyBlocks
         , rollbackBlocks       = invokeIO . Actions.RollbackBlocks . length
 
@@ -165,11 +167,14 @@ bracketActiveWallet pm walletPassiveLayer passiveWallet walletDiffusion runActiv
           (\_ -> return ())
           (flip runActiveLayer w)
   where
+    nm :: NetworkMagic
+    nm = makeNetworkMagic pm
+    --
     activeWalletLayer :: Kernel.ActiveWallet -> ActiveWalletLayer n
     activeWalletLayer w = ActiveWalletLayer {
           walletPassiveLayer = walletPassiveLayer
-        , pay                = Active.pay          w
+        , pay                = Active.pay          nm w
         , estimateFees       = Active.estimateFees w
-        , redeemAda          = Active.redeemAda    w
+        , redeemAda          = Active.redeemAda    nm w
         , getNodeInfo        = Info.getNodeInfo    w
         }

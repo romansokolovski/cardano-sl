@@ -8,6 +8,7 @@ import           Pos.Chain.Genesis as Genesis (Config (..))
 import           Pos.Chain.Ssc (SscParams)
 import           Pos.Chain.Txp (TxpConfiguration)
 import           Pos.Context (ncUserSecret)
+import           Pos.Core.NetworkMagic (makeNetworkMagic)
 import           Pos.Launcher (NodeParams (..), NodeResources (..),
                      WalletConfiguration (..), bpLoggingParams, lpDefaultName,
                      runNode)
@@ -64,8 +65,9 @@ actionWithWallet params genesisConfig walletConfig txpConfig ntpConfig nodeParam
             , Kernel.dbPathMetadata  = dbPath <> "-sqlite.sqlite3"
             , Kernel.dbRebuild       = rebuildDB
             })
-        WalletLayer.Kernel.bracketPassiveWallet dbMode logMessage' keystore nodeState $ \walletLayer passiveWallet -> do
-            migrateLegacyDataLayer passiveWallet dbPath (getFullMigrationFlag params)
+        let nm = makeNetworkMagic $ configProtocolMagic genesisConfig
+        WalletLayer.Kernel.bracketPassiveWallet nm dbMode logMessage' keystore nodeState $ \walletLayer passiveWallet -> do
+            migrateLegacyDataLayer nm passiveWallet dbPath (getFullMigrationFlag params)
 
             let plugs = plugins (walletLayer, passiveWallet) dbMode
 

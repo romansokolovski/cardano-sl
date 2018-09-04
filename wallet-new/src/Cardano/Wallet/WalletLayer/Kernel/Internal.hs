@@ -16,6 +16,7 @@ import           Data.Acid.Advanced (update')
 import           System.IO.Error (isDoesNotExistError)
 
 import           Pos.Chain.Update (ConfirmedProposalState, SoftwareVersion)
+import           Pos.Core.NetworkMagic (NetworkMagic)
 
 import           Cardano.Wallet.API.V1.Types (V1 (..), Wallet,
                      WalletImport (..))
@@ -104,10 +105,11 @@ resetWalletState w = liftIO $ do
 
 -- | Imports a 'Wallet' from a backup on disk.
 importWallet :: MonadIO m
-             => Kernel.PassiveWallet
+             => NetworkMagic
+             -> Kernel.PassiveWallet
              -> WalletImport
              -> m (Either ImportWalletError Wallet)
-importWallet pw WalletImport{..} = liftIO $ do
+importWallet nm pw WalletImport{..} = liftIO $ do
     secretE <- try $ Keystore.readWalletSecret wiFilePath
     case secretE of
          Left e ->
@@ -118,7 +120,7 @@ importWallet pw WalletImport{..} = liftIO $ do
              case mbEsk of
                  Nothing  -> return (Left $ ImportWalletNoWalletFoundInBackup wiFilePath)
                  Just esk -> do
-                     res <- liftIO $ createWallet pw (ImportWalletFromESK esk wiSpendingPassword)
+                     res <- liftIO $ createWallet nm pw (ImportWalletFromESK esk wiSpendingPassword)
                      return $ case res of
                           Left e               -> Left (ImportWalletCreationFailed e)
                           Right importedWallet -> Right importedWallet

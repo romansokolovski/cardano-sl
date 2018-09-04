@@ -27,6 +27,7 @@ import           Pos.Chain.Block (HeaderHash)
 import           Pos.Chain.Genesis (Config (..))
 import           Pos.Chain.Txp (TxId)
 import           Pos.Core.Chrono (OldestFirst (..))
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Crypto (EncryptedSecretKey)
 import           Pos.DB.Block (getBlund)
 import           Pos.Util.Log (Severity (..))
@@ -61,16 +62,17 @@ import           Cardano.Wallet.WalletLayer.Kernel.Wallets
 -- | Prefilter the block for each account.
 --
 -- TODO: Improve performance (CBR-379)
-prefilterBlock' :: PassiveWallet
+prefilterBlock' :: NetworkMagic
+                -> PassiveWallet
                 -> ResolvedBlock
                 -> IO ((BlockContext, Map HdAccountId PrefilteredBlock), [TxMeta])
-prefilterBlock' pw b = do
+prefilterBlock' nm pw b = do
     aux <$> getWalletCredentials pw
   where
     aux :: [(WalletId, EncryptedSecretKey)]
         -> ((BlockContext, Map HdAccountId PrefilteredBlock), [TxMeta])
     aux ws =
-      let (conMap, conMeta) = mconcat $ map (uncurry (prefilterBlock b)) ws
+      let (conMap, conMeta) = mconcat $ map (uncurry (prefilterBlock nm b)) ws
       in ((b ^. rbContext, conMap), conMeta)
 
 data BackfillFailed
@@ -130,10 +132,11 @@ data ApplyBlockErrorCase
 -- The serialization of calls to 'applyBlock' is handled by the wallet worker,
 -- which should carry the sole responsibility for applying blocks to a wallet.
 {-# ANN applyBlock ("HLint: ignore Use forM_" :: Text) #-}
-applyBlock :: PassiveWallet
+applyBlock :: NetworkMagic
+           -> PassiveWallet
            -> ResolvedBlock
            -> IO ()
-applyBlock pw@PassiveWallet{..} b = do
+applyBlock nm pw@PassiveWallet{..} b = do
     k <- Node.getSecurityParameter _walletNode
     runExceptT (applyOneBlock k Nothing b) >>= either (handleApplyBlockErrors k) pure
   where
@@ -168,7 +171,7 @@ applyBlock pw@PassiveWallet{..} b = do
               _walletLogMessage Warning
                                 ("applyBlock: block was incomparable to wallet checkpoint, "
                                  <> "restoring " <> show rootId)
-              restoreKnownWallet pw rootId
+              restoreKnownWallet nm pw rootId
 
           -- Beginning with the oldest missing block, update each lagging account.
           let applyOne (block, toAccts) = runExceptT (applyOneBlock k (Just toAccts) block)
@@ -187,7 +190,7 @@ applyBlock pw@PassiveWallet{..} b = do
                     -> ResolvedBlock
                     -> ExceptT (NonEmptyMap HdAccountId ApplyBlockFailed) IO ()
       applyOneBlock k accts b' = ExceptT $ do
-          ((ctxt, blocksByAccount), metas) <- prefilterBlock' pw b'
+          ((ctxt, blocksByAccount), metas) <- prefilterBlock' nm pw b'
           -- apply block to all Accounts in all Wallets
           mConfirmed <- update' _wallets $ ApplyBlock k ctxt accts blocksByAccount
           case mConfirmed of
@@ -272,13 +275,14 @@ applyBlock pw@PassiveWallet{..} b = do
 --
 -- NOTE: The Ouroboros protocol says that this is only valid if the number of
 -- resolved blocks exceeds the length of blocks to roll back.
-switchToFork :: PassiveWallet
+switchToFork :: NetworkMagic
+             -> PassiveWallet
              -> Maybe HeaderHash -- ^ Roll back until we meet this hash.
              -> [ResolvedBlock] -- ^ Blocks in the new fork
              -> IO ()
-switchToFork pw@PassiveWallet{..} oldest bs = do
+switchToFork nm pw@PassiveWallet{..} oldest bs = do
     k <- Node.getSecurityParameter _walletNode
-    blocksAndMeta <- mapM (prefilterBlock' pw) bs
+    blocksAndMeta <- mapM (prefilterBlock' nm pw) bs
     let (blockssByAccount, metas) = unzip blocksAndMeta
 
     changes <- trySwitchingToFork k blockssByAccount
@@ -312,7 +316,7 @@ switchToFork pw@PassiveWallet{..} oldest bs = do
                 for_ (Set.toList badWallets) $ \rootId -> do
                     _walletLogMessage Warning
                       ("switchToFork: wallet " <> show rootId <> " must enter restoration.")
-                    restoreKnownWallet pw rootId
+                    restoreKnownWallet nm pw rootId
 
                 -- Now that the problematic wallets are in restoration, try again.
                 trySwitchingToFork k blockssByAccount

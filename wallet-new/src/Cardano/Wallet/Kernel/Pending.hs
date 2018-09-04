@@ -17,6 +17,7 @@ import           Data.Acid.Advanced (update')
 
 import           Pos.Chain.Txp (Tx (..), TxAux (..), TxOut (..))
 import           Pos.Core (Coin (..))
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Crypto (EncryptedSecretKey)
 
 import           Cardano.Wallet.Kernel.DB.AcidState (CancelPending (..),
@@ -53,26 +54,28 @@ type PartialTxMeta = Bool -> Coin -> TxMeta
 -- submission layer is notified accordingly.
 --
 -- NOTE: we select "our" output addresses from the transaction and pass it along to the data layer
-newPending :: ActiveWallet
+newPending :: NetworkMagic
+           -> ActiveWallet
            -> HdAccountId
            -> TxAux
            -> PartialTxMeta
            -> IO (Either NewPendingError TxMeta)
-newPending w accountId tx partialMeta = do
-    newTx w accountId tx partialMeta $ \ourAddrs ->
+newPending nm w accountId tx partialMeta = do
+    newTx nm w accountId tx partialMeta $ \ourAddrs ->
         update' ((walletPassive w) ^. wallets) $ NewPending accountId (InDb tx) ourAddrs
 
 -- | Submit new foreign transaction
 --
 -- A foreign transaction is a transaction that transfers funds from /another/
 -- wallet to this one.
-newForeign :: ActiveWallet
+newForeign :: NetworkMagic
+           -> ActiveWallet
            -> HdAccountId
            -> TxAux
            -> TxMeta
            -> IO (Either NewForeignError ())
-newForeign w accountId tx meta = do
-    map void <$> newTx w accountId tx (\_ _ ->  meta) $ \ourAddrs ->
+newForeign nm w accountId tx meta = do
+    map void <$> newTx nm w accountId tx (\_ _ ->  meta) $ \ourAddrs ->
         update' ((walletPassive w) ^. wallets) $ NewForeign accountId (InDb tx) ourAddrs
 
 -- | Submit a new transaction
@@ -84,13 +87,14 @@ newForeign w accountId tx meta = do
 -- is persisted and the submission layer is notified accordingly.
 --
 -- NOTE: we select "our" output addresses from the transaction and pass it along to the data layer
-newTx :: forall e. ActiveWallet
+newTx :: forall e. NetworkMagic
+      -> ActiveWallet
       -> HdAccountId
       -> TxAux
       -> PartialTxMeta
       -> ([HdAddress] -> IO (Either e ())) -- ^ the update to run, takes ourAddrs as arg
       -> IO (Either e TxMeta)
-newTx ActiveWallet{..} accountId tx partialMeta upd = do
+newTx nm ActiveWallet{..} accountId tx partialMeta upd = do
     -- run the update
     allCredentials <- getWalletCredentials walletPassive
     let allOurAddresses = fst <$> allOurs allCredentials
@@ -121,7 +125,7 @@ newTx ActiveWallet{..} accountId tx partialMeta upd = do
             map f $ filterOurs wKey txOutAddress txOut
             where
                 f (txOut',addressId) = (initHdAddress addressId (txOutAddress txOut'), txOutValue txOut')
-                wKey = (wid, keyToWalletDecrCredentials $ KeyForRegular esk)
+                wKey = (wid, keyToWalletDecrCredentials nm $ KeyForRegular esk)
 
         submitTx :: IO ()
         submitTx = modifyMVar_ (walletPassive ^. walletSubmission) $

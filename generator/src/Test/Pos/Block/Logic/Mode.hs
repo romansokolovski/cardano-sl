@@ -73,6 +73,7 @@ import           Pos.Core.Conc (currentTime)
 import           Pos.Core.Reporting (HasMisbehaviorMetrics (..),
                      MonadReporting (..))
 import           Pos.Core.Slotting (MonadSlotsData)
+import           Pos.Core.NetworkMagic (makeNetworkMagic)
 import           Pos.DB (DBPure, MonadDB (..), MonadDBRead (..),
                      MonadGState (..))
 import qualified Pos.DB as DB
@@ -277,7 +278,8 @@ initBlockTestContext genesisConfig tp@TestParams {..} callback = do
             let btcGState = GS.GStateContext {_gscDB = DB.PureDB dbPureVar, ..}
             btcDelegation <- mkDelegationVar
             btcPureDBSnapshots <- PureDBSnapshotsVar <$> newIORef Map.empty
-            let btcAllSecrets = mkAllSecretsSimple genesisSecretKeys
+            let nm = makeNetworkMagic $ configProtocolMagic genesisConfig
+            let btcAllSecrets = mkAllSecretsSimple nm genesisSecretKeys
             let btCtx = BlockTestContext {btcSystemStart = systemStart, btcSSlottingStateVar = slottingState, ..}
             liftIO $ flip runReaderT clockVar $ unEmulation $ callback btCtx
     sudoLiftIO $ runTestInitMode initCtx $ initBlockTestContextDo

@@ -81,10 +81,11 @@ data Fixture = Fixture {
 -- | Prepare some fixtures using the 'PropertyM' context to prepare the data,
 -- and execute the 'acid-state' update once the 'PassiveWallet' gets into
 -- scope (after the bracket initialisation).
-prepareFixtures :: InitialBalance
+prepareFixtures :: NetworkMagic
+                -> InitialBalance
                 -> Pay
                 -> Fixture.GenActiveWalletFixture Fixture
-prepareFixtures initialBalance toPay = do
+prepareFixtures nm initialBalance toPay = do
     let (_, esk) = safeDeterministicKeyGen (B.pack $ replicate 32 0x42) mempty
     let newRootId = eskToHdRootId esk
     newRoot <- initHdRoot <$> pure newRootId
@@ -99,7 +100,7 @@ prepareFixtures initialBalance toPay = do
     utxo' <- foldlM (\acc (txIn, (TxOutAux (TxOut _ coin))) -> do
                         newIndex <- deriveIndex (pick . choose) HdAddressIx HardDerivation
 
-                        let Just (addr, _) = deriveLvl2KeyPair fixedNM
+                        let Just (addr, _) = deriveLvl2KeyPair nm
                                                                (IsBootstrapEraAddr True)
                                                                (ShouldCheckPassphrase True)
                                                                mempty
@@ -114,7 +115,7 @@ prepareFixtures initialBalance toPay = do
         liftIO $ Keystore.insert (WalletIdHdRnd newRootId) esk keystore
         let pw = Kernel.walletPassive aw
 
-        let accounts         = Kernel.prefilterUtxo newRootId esk utxo'
+        let accounts         = Kernel.prefilterUtxo nm newRootId esk utxo'
             hdAccountId      = Kernel.defaultHdAccountId newRootId
             (Just hdAddress) = Kernel.defaultHdAddress esk emptyPassphrase newRootId
 
@@ -128,7 +129,8 @@ prepareFixtures initialBalance toPay = do
                          }
 
 withFixture :: MonadIO m
-            => InitialBalance
+            => NetworkMagic
+            -> InitialBalance
             -> Pay
             -> (  Keystore.Keystore
                -> ActiveWalletLayer m
@@ -137,8 +139,8 @@ withFixture :: MonadIO m
                -> IO a
                )
             -> PropertyM IO a
-withFixture initialBalance toPay cc =
-    Fixture.withActiveWalletFixture (prepareFixtures initialBalance toPay) cc
+withFixture nm initialBalance toPay cc =
+    Fixture.withActiveWalletFixture nm (prepareFixtures nm initialBalance toPay) cc
 
 -- | A constant fee calculation.
 constantFee :: Int -> NonEmpty Coin -> Coin
@@ -146,15 +148,16 @@ constantFee _ _ = mkCoin 10
 
 -- | Helper function to facilitate payments via the Layer or Servant.
 withPayment :: MonadIO n
-            => InitialBalance
+            => NetworkMagic
+            -> InitialBalance
             -- ^ How big the wallet Utxo must be
             -> Pay
             -- ^ How big the payment must be
             -> (ActiveWalletLayer n -> V1.Payment -> IO ())
             -- ^ The action to run.
             -> PropertyM IO ()
-withPayment initialBalance toPay action = do
-    withFixture initialBalance toPay $ \keystore activeLayer _ Fixture{..} -> do
+withPayment nm initialBalance toPay action = do
+    withFixture nm initialBalance toPay $ \keystore activeLayer _ Fixture{..} -> do
         liftIO $ Keystore.insert (WalletIdHdRnd fixtureHdRootId) fixtureESK keystore
         let (AccountIdHdRnd hdAccountId)  = fixtureAccountId
         let (HdRootId (InDb rootAddress)) = fixtureHdRootId
@@ -176,9 +179,9 @@ spec = describe "NewPayment" $ do
 
     describe "Generating a new payment (wallet layer)" $ do
 
-        prop "pay works (realSigner, SenderPaysFee)" $ withMaxSuccess 50 $ do
+        prop "pay works (realSigner, SenderPaysFee)" $ withMaxSuccess 50 $ \nm -> do
             monadicIO $
-                withPayment (InitialADA 10000) (PayLovelace 10) $ \activeLayer newPayment -> do
+                withPayment nm (InitialADA 10000) (PayLovelace 10) $ \activeLayer newPayment -> do
                     res <- liftIO ((WalletLayer.pay activeLayer) mempty
                                                                  IgnoreGrouping
                                                                  SenderPaysFee
@@ -187,9 +190,9 @@ spec = describe "NewPayment" $ do
                     liftIO ((bimap STB STB res) `shouldSatisfy` isRight)
 
     describe "Generating a new payment (kernel)" $ do
-        prop "newTransaction works (real signer, SenderPaysFee)" $ withMaxSuccess 50 $ do
+        prop "newTransaction works (real signer, SenderPaysFee)" $ withMaxSuccess 50 $ \nm -> do
             monadicIO $
-                withFixture @IO (InitialADA 10000) (PayLovelace 10) $ \_ _ aw Fixture{..} -> do
+                withFixture @IO nm (InitialADA 10000) (PayLovelace 10) $ \_ _ aw Fixture{..} -> do
                     policy <- Node.getFeePolicy (Kernel.walletPassive aw ^. Kernel.walletNode)
                     let opts = (newOptions (Kernel.cardanoFee policy)) {
                                csoExpenseRegulation = SenderPaysFee
@@ -204,9 +207,9 @@ spec = describe "NewPayment" $ do
                                   )
                     liftIO ((bimap STB (const $ STB ()) res) `shouldSatisfy` isRight)
 
-        prop "newTransaction works (ReceiverPaysFee)" $ withMaxSuccess 50 $ do
+        prop "newTransaction works (ReceiverPaysFee)" $ withMaxSuccess 50 $ \nm -> do
             monadicIO $
-                withFixture @IO (InitialADA 10000) (PayADA 1) $ \_ _ aw Fixture{..} -> do
+                withFixture @IO nm (InitialADA 10000) (PayADA 1) $ \_ _ aw Fixture{..} -> do
                     policy <- Node.getFeePolicy (Kernel.walletPassive aw ^. Kernel.walletNode)
                     let opts = (newOptions (Kernel.cardanoFee policy)) {
                                csoExpenseRegulation = ReceiverPaysFee
@@ -223,9 +226,9 @@ spec = describe "NewPayment" $ do
 
     describe "Generating a new payment (Servant)" $ do
 
-        prop "works as expected in the happy path scenario" $ withMaxSuccess 50 $
+        prop "works as expected in the happy path scenario" $ withMaxSuccess 50 $ \nm ->
             monadicIO $
-                withPayment (InitialADA 1000) (PayADA 1) $ \activeLayer newPayment -> do
+                withPayment nm (InitialADA 1000) (PayADA 1) $ \activeLayer newPayment -> do
                     res <- liftIO (runExceptT . runHandler' $ Handlers.newTransaction activeLayer newPayment)
                     liftIO ((bimap identity STB res) `shouldSatisfy` isRight)
 
@@ -233,9 +236,9 @@ spec = describe "NewPayment" $ do
 
         describe "Estimating fees (wallet layer)" $ do
 
-            prop "estimating fees works (SenderPaysFee)" $ withMaxSuccess 50 $ do
+            prop "estimating fees works (SenderPaysFee)" $ withMaxSuccess 50 $ \nm -> do
                 monadicIO $
-                    withPayment (InitialADA 10000) (PayLovelace 10) $ \activeLayer newPayment -> do
+                    withPayment nm (InitialADA 10000) (PayLovelace 10) $ \activeLayer newPayment -> do
                         res <- liftIO ((WalletLayer.estimateFees activeLayer) IgnoreGrouping
                                                                               SenderPaysFee
                                                                               newPayment
@@ -246,9 +249,9 @@ spec = describe "NewPayment" $ do
                                  fee `shouldSatisfy` (> (Coin 0))
 
         describe "Estimating fees (kernel)" $ do
-            prop "estimating fees works (SenderPaysFee)" $ withMaxSuccess 50 $
+            prop "estimating fees works (SenderPaysFee)" $ withMaxSuccess 50 $ \nm ->
                 monadicIO $
-                    withFixture @IO (InitialADA 10000) (PayADA 1) $ \_ _ aw Fixture{..} -> do
+                    withFixture @IO nm (InitialADA 10000) (PayADA 1) $ \_ _ aw Fixture{..} -> do
                         let opts = (newOptions constantFee) {
                                    csoExpenseRegulation = SenderPaysFee
                                  , csoInputGrouping     = IgnoreGrouping
@@ -265,9 +268,9 @@ spec = describe "NewPayment" $ do
                              Left e  -> fail (formatToString build e)
                              Right x -> x `shouldBe` Coin 10
 
-            prop "estimating fees works (kernel, ReceiverPaysFee)" $ withMaxSuccess 50 $
+            prop "estimating fees works (kernel, ReceiverPaysFee)" $ withMaxSuccess 50 $ \nm ->
                 monadicIO $
-                    withFixture @IO (InitialADA 10000) (PayADA 1) $ \_ _ aw Fixture{..} -> do
+                    withFixture @IO nm (InitialADA 10000) (PayADA 1) $ \_ _ aw Fixture{..} -> do
                         let opts = (newOptions constantFee) {
                                    csoExpenseRegulation = SenderPaysFee
                                  , csoInputGrouping     = IgnoreGrouping
@@ -284,9 +287,9 @@ spec = describe "NewPayment" $ do
                              Left e  -> fail (formatToString build e)
                              Right x -> x `shouldBe` Coin 10
 
-            prop "estimating fees works (kernel, SenderPaysFee, cardanoFee)" $ withMaxSuccess 50 $
+            prop "estimating fees works (kernel, SenderPaysFee, cardanoFee)" $ withMaxSuccess 50 $ \nm ->
                 monadicIO $
-                    withFixture @IO (InitialADA 10000) (PayADA 1) $ \_ _ aw Fixture{..} -> do
+                    withFixture @IO nm (InitialADA 10000) (PayADA 1) $ \_ _ aw Fixture{..} -> do
                         policy <- Node.getFeePolicy (Kernel.walletPassive aw ^. Kernel.walletNode)
                         let opts = (newOptions (Kernel.cardanoFee policy)) {
                                    csoExpenseRegulation = SenderPaysFee
@@ -305,24 +308,21 @@ spec = describe "NewPayment" $ do
                              Right x -> x `shouldSatisfy` (> (Coin 0))
 
         describe "Estimating fees (Servant)" $ do
-            prop "works as expected in the happy path scenario" $ withMaxSuccess 50 $
+            prop "works as expected in the happy path scenario" $ withMaxSuccess 50 $ \nm ->
                 monadicIO $
-                    withPayment (InitialADA 1000) (PayADA 1) $ \activeLayer newPayment -> do
+                    withPayment nm (InitialADA 1000) (PayADA 1) $ \activeLayer newPayment -> do
                         res <- liftIO (runExceptT . runHandler' $ Handlers.estimateFees activeLayer newPayment)
                         liftIO ((bimap identity STB res) `shouldSatisfy` isRight)
 
             -- The 'estimateFee' endpoint doesn't require a spendingPassword, but
             -- the 'Payment' type does come with an optional 'spendingPassword' field.
             -- Here we want to check this is completely ignored.
-            prop "ignores completely the spending password in Payment" $ withMaxSuccess 50 $
+            prop "ignores completely the spending password in Payment" $ withMaxSuccess 50 $ \nm ->
                 monadicIO $ do
                     randomPass <- pick arbitrary
-                    withPayment (InitialADA 1000) (PayADA 1) $ \activeLayer newPayment -> do
+                    withPayment nm (InitialADA 1000) (PayADA 1) $ \activeLayer newPayment -> do
                         -- mangle the spending password to be something arbitrary, check
                         -- that this doesn't hinder our ability to estimate fees.
                         let pmt = newPayment { V1.pmtSpendingPassword = randomPass }
                         res <- liftIO (runExceptT . runHandler' $ Handlers.estimateFees activeLayer pmt)
                         liftIO ((bimap identity STB res) `shouldSatisfy` isRight)
-
-fixedNM :: NetworkMagic
-fixedNM = NetworkMainOrStage

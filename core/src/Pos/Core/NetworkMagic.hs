@@ -24,7 +24,7 @@ import           Pos.Util.Util (cerealError)
 -- conversion bugs.
 data NetworkMagic
     = NetworkMainOrStage
-    | NetworkTestnet !Word32
+    | NetworkTestnet !Int32
     deriving (Show, Eq, Ord, Generic)
 
 instance NFData NetworkMagic
@@ -44,4 +44,4 @@ instance SafeCopy NetworkMagic where
 makeNetworkMagic :: ProtocolMagic -> NetworkMagic
 makeNetworkMagic pm = case getRequiresNetworkMagic pm of
     RequiresNoMagic -> NetworkMainOrStage
-    RequiresMagic   -> NetworkTestnet (fromIntegral (getProtocolMagic pm))
+    RequiresMagic   -> NetworkTestnet (getProtocolMagic pm)

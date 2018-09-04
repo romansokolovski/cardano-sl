@@ -20,6 +20,7 @@ import qualified Cardano.Wallet.Kernel.Read as Kernel
 import           Pos.Chain.Genesis (Config (..))
 import           Pos.Core (Coeff (..), TxSizeLinear (..))
 import           Pos.Core.Chrono
+import           Pos.Core.NetworkMagic (NetworkMagic (..))
 
 import           Data.Validated
 import           Test.Infrastructure.Generator
@@ -127,7 +128,7 @@ spec = do
              -> IO (Validated EquivalenceViolation (IntCtxt h))
     evaluate useWW activeWallet ind = do
        fmap (fmap snd) $ runTranslateTNoErrors $ do
-         equivalentT useWW activeWallet esk (mkWallet ours') ind
+         equivalentT fixedNM useWW activeWallet esk (mkWallet ours') ind
       where
         esk = deriveRootEsk (IxPoor ourActorIx)
         -- all addresses belonging to this poor actor
@@ -287,3 +288,6 @@ diffusion =  Kernel.WalletDiffusion {
       walletSendTx                = \_tx -> return False
     , walletGetSubscriptionStatus = return mempty
     }
+
+fixedNM :: NetworkMagic
+fixedNM = NetworkMainOrStage

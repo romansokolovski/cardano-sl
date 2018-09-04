@@ -28,6 +28,7 @@ import qualified Formatting.Buildable
 import           Pos.Chain.Txp (Utxo, formatUtxo)
 import           Pos.Core (Timestamp (..))
 import           Pos.Core.Chrono
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Crypto (EncryptedSecretKey, emptyPassphrase)
 
 import qualified Cardano.Wallet.Kernel.Addresses as Kernel
@@ -201,13 +202,14 @@ interpretT useWW injErr mkWallet EventCallbacks{..} Inductive{..} =
 -------------------------------------------------------------------------------}
 
 equivalentT :: forall h e m. (Hash h Addr, MonadIO m, MonadFail m)
-            => UseWalletWorker
+            => NetworkMagic
+            -> UseWalletWorker
             -> Internal.ActiveWallet
             -> EncryptedSecretKey
             -> (DSL.Transaction h Addr -> Wallet h Addr)
             -> Inductive h Addr
             -> TranslateT e m (Validated EquivalenceViolation (Wallet h Addr, IntCtxt h))
-equivalentT useWW activeWallet esk = \mkWallet w ->
+equivalentT nm useWW activeWallet esk = \mkWallet w ->
     fmap validatedFromEither
       $ catchTranslateErrors
       $ interpretT useWW notChecked mkWallet EventCallbacks{..} w
@@ -232,6 +234,7 @@ equivalentT useWW activeWallet esk = \mkWallet w ->
                                                         (Kernel.defaultHdAddressId newRootId)
         res <- liftIO $
           Kernel.createWalletHdRnd
+            nm
             passiveWallet
             False
             (defaultAddress ^. HD.hdAddressAddress . fromDb)
@@ -242,7 +245,7 @@ equivalentT useWW activeWallet esk = \mkWallet w ->
                 Left $ DB.CreateHdWallet root
                                          defaultAccount
                                          defAddress
-                                         (prefilterUtxo (root ^. HD.hdRootId) esk utxo)
+                                         (prefilterUtxo nm (root ^. HD.hdRootId) esk utxo)
             )
         case res of
              Left e -> createWalletErr (STB e)
@@ -255,7 +258,7 @@ equivalentT useWW activeWallet esk = \mkWallet w ->
             walletName       = HD.WalletName "(test wallet)"
             assuranceLevel   = HD.AssuranceLevelNormal
 
-            utxoByAccount = prefilterUtxo rootId esk utxo
+            utxoByAccount = prefilterUtxo nm rootId esk utxo
             accountIds    = Map.keys utxoByAccount
             rootId        = HD.eskToHdRootId esk
 
@@ -283,7 +286,7 @@ equivalentT useWW activeWallet esk = \mkWallet w ->
                       -> TranslateT EquivalenceViolation m ()
     walletApplyBlockT ctxt accountId block = do
         -- We assume the wallet is not behind
-        liftIO $ Kernel.applyBlock passiveWallet (fromRawResolvedBlock block)
+        liftIO $ Kernel.applyBlock nm passiveWallet (fromRawResolvedBlock block)
         checkWalletState ctxt accountId
 
     walletNewPendingT :: InductiveCtxt h
@@ -293,7 +296,7 @@ equivalentT useWW activeWallet esk = \mkWallet w ->
     walletNewPendingT ctxt accountId tx = do
         let currentTime = getSomeTimestamp
         let partialMeta = toMeta currentTime accountId tx
-        _ <- liftIO $ Kernel.newPending activeWallet accountId (rawResolvedTx tx) partialMeta
+        _ <- liftIO $ Kernel.newPending nm activeWallet accountId (rawResolvedTx tx) partialMeta
         checkWalletState ctxt accountId
 
     walletRollbackT :: InductiveCtxt h
@@ -313,7 +316,7 @@ equivalentT useWW activeWallet esk = \mkWallet w ->
         -- We assume the wallet is not in restoration mode
         let rbs@(oldest:_) = map fromRawResolvedBlock (toList bs)
             hh = _fromDb <$> (oldest ^. DB.rbContext . DB.bcPrevMain . lazy)
-        liftIO $ Kernel.switchToFork passiveWallet hh rbs
+        liftIO $ Kernel.switchToFork nm passiveWallet hh rbs
         checkWalletState ctxt accountId
 
     checkWalletState :: InductiveCtxt h

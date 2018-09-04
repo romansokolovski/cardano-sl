@@ -32,6 +32,7 @@ import           Data.SafeCopy (base, deriveSafeCopy)
 import           Pos.Chain.Txp (TxId, TxIn (..), TxOut (..), TxOutAux (..),
                      Utxo)
 import           Pos.Core (Address (..), Coin, SlotId)
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Crypto (EncryptedSecretKey)
 import           Pos.Wallet.Web.State.Storage (WAddressMeta (..))
 import           Pos.Wallet.Web.Tracking.Decrypt (WalletDecrCredentials,
@@ -182,11 +183,11 @@ prefilterUtxo' wKey utxo
                                     Map.singleton txIn (txOut, addrId))
 
 -- | Prefilter utxo using walletId and esk
-prefilterUtxo :: HdRootId -> EncryptedSecretKey -> Utxo -> Map HdAccountId (Utxo,[AddrWithId])
-prefilterUtxo rootId esk utxo = map toPrefilteredUtxo prefUtxo
+prefilterUtxo :: NetworkMagic -> HdRootId -> EncryptedSecretKey -> Utxo -> Map HdAccountId (Utxo,[AddrWithId])
+prefilterUtxo nm rootId esk utxo = map toPrefilteredUtxo prefUtxo
     where
         (_,prefUtxo) = prefilterUtxo' wKey utxo
-        wKey         = (WalletIdHdRnd rootId, keyToWalletDecrCredentials $ KeyForRegular esk)
+        wKey         = (WalletIdHdRnd rootId, keyToWalletDecrCredentials nm $ KeyForRegular esk)
 
 -- | Produce Utxo along with all (extended) addresses occurring in the Utxo
 toPrefilteredUtxo :: UtxoWithAddrId -> (Utxo,[AddrWithId])
@@ -268,18 +269,19 @@ extendWithSummary (onlyOurInps,onlyOurOuts) utxoWithAddrId
 -- | Prefilter the transactions of a resolved block for the given wallet.
 --
 --   Returns prefiltered blocks indexed by HdAccountId.
-prefilterBlock :: ResolvedBlock
+prefilterBlock :: NetworkMagic
+               -> ResolvedBlock
                -> WalletId
                -> EncryptedSecretKey
                -> (Map HdAccountId PrefilteredBlock, [TxMeta])
-prefilterBlock block wid esk =
+prefilterBlock nm block wid esk =
       (Map.fromList
     $ map (mkPrefBlock (block ^. rbContext) inpAll outAll)
     $ Set.toList accountIds
     , metas)
   where
     wdc :: WalletDecrCredentials
-    wdc  = keyToWalletDecrCredentials $ KeyForRegular esk
+    wdc  = keyToWalletDecrCredentials nm $ KeyForRegular esk
     wKey = (wid, wdc)
 
     inps :: [Map HdAccountId (Set TxIn)]

@@ -17,6 +17,7 @@ import           Universum
 import           Pos.Util.Wlog (Severity)
 
 import           Pos.Chain.Genesis (Config (..))
+import           Pos.Core.NetworkMagic (NetworkMagic)
 
 import           Test.Pos.Configuration (withDefConfiguration)
 import           Test.QuickCheck (arbitrary, frequency)
@@ -41,11 +42,13 @@ genSpendingPassword =
     pick (frequency [(20, pure Nothing), (80, Just <$> arbitrary)])
 
 withLayer :: MonadIO m
-          => (PassiveWalletLayer m -> PassiveWallet -> IO a)
+          => NetworkMagic
+          -> (PassiveWalletLayer m -> PassiveWallet -> IO a)
           -> PropertyM IO a
-withLayer cc = do
+withLayer nm cc = do
     liftIO $ Keystore.bracketTestKeystore $ \keystore -> do
         WalletLayer.Kernel.bracketPassiveWallet
+            nm
             Kernel.UseInMemory
             devNull
             keystore
@@ -56,13 +59,15 @@ type GenPassiveWalletFixture x = PropertyM IO (PassiveWallet -> IO x)
 type GenActiveWalletFixture x  = PropertyM IO (Keystore.Keystore -> ActiveWallet  -> IO x)
 
 withPassiveWalletFixture :: MonadIO m
-                         => GenPassiveWalletFixture x
+                         => NetworkMagic
+                         -> GenPassiveWalletFixture x
                          -> (Keystore.Keystore -> PassiveWalletLayer m -> PassiveWallet -> x -> IO a)
                          -> PropertyM IO a
-withPassiveWalletFixture prepareFixtures cc = do
+withPassiveWalletFixture nm prepareFixtures cc = do
     generateFixtures <- prepareFixtures
     liftIO $ Keystore.bracketTestKeystore $ \keystore -> do
         WalletLayer.Kernel.bracketPassiveWallet
+            nm
             Kernel.UseInMemory
             devNull
             keystore
@@ -72,13 +77,14 @@ withPassiveWalletFixture prepareFixtures cc = do
                 cc keystore layer wallet fixtures
 
 withActiveWalletFixture :: MonadIO m
-                        => GenActiveWalletFixture x
+                        => NetworkMagic
+                        -> GenActiveWalletFixture x
                         -> (Keystore.Keystore -> ActiveWalletLayer m -> ActiveWallet -> x -> IO a)
                         -> PropertyM IO a
-withActiveWalletFixture prepareFixtures cc = do
+withActiveWalletFixture nm prepareFixtures cc = do
     generateFixtures <- prepareFixtures
     liftIO $ Keystore.bracketTestKeystore $ \keystore -> do
-        WalletLayer.Kernel.bracketPassiveWallet Kernel.UseInMemory devNull keystore mockNodeStateDef $ \passiveLayer passiveWallet -> do
+        WalletLayer.Kernel.bracketPassiveWallet nm Kernel.UseInMemory devNull keystore mockNodeStateDef $ \passiveLayer passiveWallet -> do
             withDefConfiguration $ \genesisConfig -> do
                 WalletLayer.Kernel.bracketActiveWallet
                         (configProtocolMagic genesisConfig)

@@ -123,7 +123,8 @@ instance Buildable PaymentError where
 -- stop trying to perform a payment if the payment would take more than 30
 -- seconds, as well as internally retrying up to 5 times to propagate the
 -- transaction via 'newPending'.
-pay :: ActiveWallet
+pay :: NetworkMagic
+    -> ActiveWallet
     -> PassPhrase
     -> CoinSelectionOptions
     -> HdAccountId
@@ -131,13 +132,13 @@ pay :: ActiveWallet
     -> NonEmpty (Address, Coin)
     -- ^ The payees
     -> IO (Either PaymentError (Tx, TxMeta))
-pay activeWallet spendingPassword opts accountId payees = do
+pay nm activeWallet spendingPassword opts accountId payees = do
     retrying retryPolicy shouldRetry $ \rs -> do
         res <- newTransaction activeWallet spendingPassword opts accountId payees
         case res of
              Left e      -> return (Left $ PaymentNewTransactionError e)
              Right (txAux, partialMeta, _utxo) -> do
-                 succeeded <- newPending activeWallet accountId txAux partialMeta
+                 succeeded <- newPending nm activeWallet accountId txAux partialMeta
                  case succeeded of
                       Left e   -> do
                           -- If the next retry would bring us to the
@@ -532,12 +533,13 @@ instance Buildable RedeemAdaError where
 --
 -- NOTE: The account must already exist, it is /not/ created implicitly if it
 -- does not yet exist.
-redeemAda :: ActiveWallet
+redeemAda :: NetworkMagic
+          -> ActiveWallet
           -> HdAccountId      -- ^ Account ID
           -> PassPhrase       -- ^ Spending password
           -> RedeemSecretKey  -- ^ Redemption key
           -> IO (Either RedeemAdaError (Tx, TxMeta))
-redeemAda w@ActiveWallet{..} accId pw rsk = runExceptT $ do
+redeemAda nm w@ActiveWallet{..} accId pw rsk = runExceptT $ do
     snapshot   <- liftIO $ getWalletSnapshot walletPassive
     _accExists <- withExceptT RedeemAdaUnknownAccountId $ exceptT $
                     lookupHdAccountId snapshot accId
@@ -549,6 +551,7 @@ redeemAda w@ActiveWallet{..} accId pw rsk = runExceptT $ do
     (tx, meta) <- mkTx changeAddr
     withExceptT RedeemAdaNewForeignFailed $ ExceptT $ liftIO $
       newForeign
+        nm
         w
         accId
         tx

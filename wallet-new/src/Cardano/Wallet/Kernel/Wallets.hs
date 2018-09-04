@@ -23,6 +23,7 @@ import qualified Formatting.Buildable
 import           Data.Acid.Advanced (update')
 
 import           Pos.Core (Address, Timestamp)
+import           Pos.Core.NetworkMagic (NetworkMagic)
 import           Pos.Crypto (EncryptedSecretKey, HDPassphrase, PassPhrase,
                      changeEncPassphrase, checkPassMatches, emptyPassphrase,
                      firstHardened, safeDeterministicKeyGen)
@@ -113,7 +114,8 @@ instance Show UpdateWalletPasswordError where
 -- PRECONDITION: The input 'Mnemonic' should be supplied by the frontend such
 -- that this is a brand new 'Mnemonic' never used before on the blockchain. For
 -- other wallets restoration should be used.
-createHdWallet :: PassiveWallet
+createHdWallet :: NetworkMagic
+               -> PassiveWallet
                -> Mnemonic nat
                -- ^ The set of words (i.e the mnemonic) to generate the initial seed.
                -- See <https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki#From_mnemonic_to_seed>
@@ -132,7 +134,7 @@ createHdWallet :: PassiveWallet
                -> WalletName
                -- ^ The name for this wallet.
                -> IO (Either CreateWalletError HdRoot)
-createHdWallet pw mnemonic spendingPassword assuranceLevel walletName = do
+createHdWallet nm pw mnemonic spendingPassword assuranceLevel walletName = do
     -- STEP 1: Generate the 'EncryptedSecretKey' outside any acid-state
     -- transaction, to not leak it into acid-state's transaction logs.
     let (_, esk) = safeDeterministicKeyGen (BIP39.mnemonicToSeed mnemonic) spendingPassword
@@ -177,7 +179,8 @@ createHdWallet pw mnemonic spendingPassword assuranceLevel walletName = do
         Just hdAddress -> do
             -- STEP 3: Atomically generate the wallet and the initial internal structure in
             -- an acid-state transaction.
-            res <- createWalletHdRnd pw
+            res <- createWalletHdRnd nm
+                                     pw
                                      (spendingPassword /= emptyPassphrase)
                                      (hdAddress ^. HD.hdAddressAddress . fromDb)
                                      walletName
@@ -216,7 +219,8 @@ createHdWallet pw mnemonic spendingPassword assuranceLevel walletName = do
 -- INVARIANT: Whenever we create an HdRoot, it @must@ come with a fresh
 -- account and address, both at 'firstHardened' index.
 --
-createWalletHdRnd :: PassiveWallet
+createWalletHdRnd :: NetworkMagic
+                  -> PassiveWallet
                   -> Bool
                   -- Does this wallet have a spending password?
                   -> Address
@@ -230,7 +234,7 @@ createWalletHdRnd :: PassiveWallet
                      -> Either CreateHdWallet RestoreHdWallet
                      )
                   -> IO (Either HD.CreateHdRootError HdRoot)
-createWalletHdRnd pw hasSpendingPassword defaultCardanoAddress name assuranceLevel esk createWallet = do
+createWalletHdRnd nm pw hasSpendingPassword defaultCardanoAddress name assuranceLevel esk createWallet = do
     created <- InDb <$> getCurrentTimestamp
     let rootId  = eskToHdRootId esk
         newRoot = HD.initHdRoot rootId
@@ -239,7 +243,7 @@ createWalletHdRnd pw hasSpendingPassword defaultCardanoAddress name assuranceLev
                                 assuranceLevel
                                 created
 
-        hdPass    = fst $ keyToWalletDecrCredentials (KeyForRegular esk)
+        hdPass    = fst $ keyToWalletDecrCredentials nm (KeyForRegular esk)
         hdAddress = defaultHdAddressWith hdPass rootId defaultCardanoAddress
 
     case hdAddress of
