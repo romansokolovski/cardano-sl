@@ -14777,7 +14777,7 @@ mainnet_full: &mainnet_full
       <<: *mainnet_base_genesis
       src:
         file: mainnet-genesis.json
-        hash: 5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb
+        hash: 204beb98e6589cdc5cbc98b99a62fdc877dd01c35c66f6d4f85a576c949cc018
       spec:
         <<: *mainnet_base_spec
         protocolConstants:
