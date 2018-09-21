@@ -67,6 +67,7 @@ test-suite property-tests
   main-is:             Spec.hs
   other-modules:       ChainExtension
                        Translation
+                       RulesValidity
 
                        Chain.Abstract
                        Chain.Abstract.FinitelySupportedFunction
@@ -105,6 +106,10 @@ test-suite property-tests
                      , universum >= 0.1.11
                      , utxo
                      , validation
+                     -- Needed for RulesValidity
+                     , serokell-util
+                     , cardano-sl-chain-test
+                     , cardano-sl-crypto-test
   ghc-options:
                        -threaded
                        -rtsopts
