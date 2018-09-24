@@ -73,7 +73,7 @@ test-suite property-tests
                        Chain.Abstract.FinitelySupportedFunction
                        Chain.Abstract.Repartition
                        Chain.Abstract.Translate.FromUTxO
-                       -- Chain.Abstract.Translate.ToCardano
+                       Chain.Abstract.Translate.ToCardanoTmp
                        Chain.Abstract.Translate.Policies
                        Chain.Policy
                        Infrastructure.Generator

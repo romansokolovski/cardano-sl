@@ -22,12 +22,13 @@ import           Serokell.Util (VerificationRes (VerSuccess))
 import           Test.Pos.Chain.Genesis.Dummy (dummyBlockVersionData,
                      dummyConfig, dummyGenesisHash)
 import           Test.Pos.Crypto.Dummy (dummyProtocolMagic)
+import           UTxO.DSL (GivenHash)
 
 import           Chain.Abstract (Addr (Addr), Chain)
 import           Chain.Abstract.Translate.FromUTxO
                      (ChainValidity (InvalidChain, ValidChain), IntException)
+import           Chain.Abstract.Translate.ToCardanoTmp (Abstract2Cardano)
 import           Infrastructure.Generator (simpleGen)
-import           UTxO.DSL (GivenHash)
 
 spec :: Spec
 spec = do
@@ -37,7 +38,7 @@ spec = do
     it "Validates a manually generated chain " $
       traverse_ (`shouldBeA` ValidChain) [ emptyChain
                                          , singletonChain
-                                         , boom ]
+                                         ]
 
   describe "Rule-based specification" $ do
     it "Produces valid chain according to actual validation rules" $ property $
@@ -83,9 +84,6 @@ spec = do
     -- A singleton chain with the genesis block.
     singletonChain = OldestFirst [genesisBlock]
 
-    -- And this can't be possibly right
-    boom = OldestFirst [genesisBlock, genesisBlock]
-
     chainsAreValid
       :: Either IntException (Chain GivenHash Addr, ChainValidity)
       -> Property
@@ -94,7 +92,6 @@ spec = do
     chainsAreValid (Right (_, InvalidChain _)) =
       unexpectedError "when generating an abstract chain."
                       "`simpleGen` shouldn't generate invalid chains."
-
     chainsAreValid (Left e) =
       unexpectedError "when interpreting the abstract chain. "
                       "abstract chains should be interpreted without errors."
