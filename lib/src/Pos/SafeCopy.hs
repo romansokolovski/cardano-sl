@@ -144,8 +144,8 @@ putAttrAddrAttrs :: Attributes AddrAttributes -> Cereal.Put
 putAttrAddrAttrs aaa = do
     let bs = Bi.serialize aaa
         len = BSL.length bs
-    safePut len
-    safePut bs
+    -- trace ("put len: " <> show len :: Text) $ safePut len
+    trace ("put bs: " <> show bs :: Text) $ safePut bs
 
 getAttrAddrAttrs :: Cereal.Get (Attributes AddrAttributes)
 getAttrAddrAttrs = do
@@ -156,13 +156,23 @@ getAttrAddrAttrs = do
                 <$> safeGet
                 <*> safeGet
 
-    bytesLen <- Cereal.lookAhead Cereal.getInt64be
-    bytes <- BSL.fromStrict <$> Cereal.uncheckedLookAhead (fromIntegral bytesLen)
-    label $ if BSL.length bytes /= bytesLen
-               then getLegacy
-               else case Bi.decodeFull bytes of
-                        Left _          -> getLegacy
-                        Right addrAttrs -> pure addrAttrs
+    -- ByteStrings are prefixed with a Int64 length. We cheat here and read the length as
+    -- thought it were a safePut-encoded Int64, so we know how long the ByteString will be.
+    --
+    -- 4[version] + 8[Int64] + <bytesLen>
+    -- bytesLen == length of AddrAttributes bytestring
+    bytesLen <- (\x -> trace ("get len: " <> show x :: Text) x) <$> Cereal.lookAhead safeGet
+    bytes <- (\x -> trace ("get bytes: " <> show x <> " of len " <> show (BSL.length x) :: Text) x) <$> BSL.fromStrict <$> Cereal.uncheckedLookAhead (fromIntegral bytesLen + 12)
+    let _aaVersionBytes  = BSL.take 4 bytes
+        addrAttrBytes    = BSL.drop 12 bytes
+    label $ if BSL.length addrAttrBytes /= bytesLen
+               then trace ("not enough bytes" :: Text) getLegacy
+               else case Bi.decodeFull addrAttrBytes of
+                        Left err        -> trace (("bad decode" <> show err) :: Text) getLegacy
+                        Right addrAttrs -> do
+                            -- seek ahead since we passed our bytes
+                            Cereal.uncheckedSkip (12 + fromIntegral bytesLen)
+                            pure addrAttrs
 
 instance SafeCopy Address' where
     putCopy (Address' (at, asd, aa)) = contain $ do
