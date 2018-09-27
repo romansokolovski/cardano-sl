@@ -12,6 +12,7 @@ import qualified Cardano.Crypto.Wallet as CC
 import qualified Cardano.Crypto.Wallet.Encrypted as CC
 import qualified Crypto.Math.Edwards25519 as ED25519
 import qualified Crypto.Sign.Ed25519 as EDS25519
+import qualified Data.ByteString.Lazy as BSL
 import           Data.SafeCopy (Contained, SafeCopy (..), base, contain, deriveSafeCopySimple,
                                 safeGet, safePut)
 import qualified Data.Serialize as Cereal
@@ -29,6 +30,7 @@ import           Pos.Core.Common (AddrAttributes (..), AddrSpendingData (..),
                                   Coin, CoinPortion (..), Script (..), SharedSeed (..),
                                   TxFeePolicy (..), TxSizeLinear (..))
 import           Pos.Core.Delegation (DlgPayload (..), HeavyDlgIndex (..), LightDlgIndices (..))
+import           Pos.Core.NetworkMagic (NetworkMagic (..))
 import           Pos.Core.Slotting (EpochIndex (..), EpochOrSlot (..), LocalSlotIndex (..),
                                     SlotCount (..), SlotId (..))
 import           Pos.Core.Ssc (Commitment (..), CommitmentsMap, Opening (..), SscPayload (..),
@@ -48,7 +50,7 @@ import           Pos.Crypto.Signing.Redeem (RedeemPublicKey (..), RedeemSecretKe
 import           Pos.Crypto.Signing.Signing (ProxyCert (..), ProxySecretKey (..),
                                              ProxySignature (..), PublicKey (..), SecretKey (..),
                                              Signature (..), Signed (..))
-import           Pos.Data.Attributes (Attributes (..), UnparsedFields)
+import           Pos.Data.Attributes (Attributes (..), UnparsedFields, mkAttributes)
 import           Pos.Merkle (MerkleNode (..), MerkleRoot (..), MerkleTree (..))
 import qualified Pos.Util.Modifier as MM
 import           Pos.Util.Util (cerealError, toCerealError)
@@ -137,9 +139,56 @@ deriveSafeCopySimple 0 'base ''HDAddressPayload
 deriveSafeCopySimple 0 'base ''AddrType -- ☃
 deriveSafeCopySimple 0 'base ''AddrStakeDistribution
 deriveSafeCopySimple 0 'base ''AddrSpendingData
-deriveSafeCopySimple 0 'base ''AddrAttributes
-deriveSafeCopySimple 0 'base ''Address'
-deriveSafeCopySimple 0 'base ''Address
+
+putAttrAddrAttrs :: Attributes AddrAttributes -> Cereal.Put
+putAttrAddrAttrs aaa = do
+    let bs = Bi.serialize aaa
+        len = BSL.length bs
+    safePut len
+    safePut bs
+
+getAttrAddrAttrs :: Cereal.Get (Attributes AddrAttributes)
+getAttrAddrAttrs = do
+    let label = Cereal.label "Pos.Core.Common.AddrAttributes.AddrAttributes:"
+
+    let getLegacy =
+            (\apdp asd -> mkAttributes (AddrAttributes apdp asd NMNothing))
+                <$> safeGet
+                <*> safeGet
+
+    bytesLen <- Cereal.lookAhead Cereal.getInt64be
+    bytes <- BSL.fromStrict <$> Cereal.uncheckedLookAhead (fromIntegral bytesLen)
+    label $ if BSL.length bytes /= bytesLen
+               then getLegacy
+               else case Bi.decodeFull bytes of
+                        Left _          -> getLegacy
+                        Right addrAttrs -> pure addrAttrs
+
+instance SafeCopy Address' where
+    putCopy (Address' (at, asd, aa)) = contain $ do
+        -- SafeCopy instances for a triple (,,) is a series of puts
+        safePut at
+        safePut asd
+        putAttrAddrAttrs aa
+    getCopy = contain $ do
+        let label = Cereal.label "Pos.Core.Common.Address.Address':"
+        label $ Address' <$> liftM3 (,,) safeGet safeGet getAttrAddrAttrs
+    version = 0
+    kind = base
+    errorTypeName _ = "Pos.Core.Common.Address.Address'"
+
+instance SafeCopy Address where
+    putCopy (Address ar aa at) = contain $ do
+        safePut ar
+        putAttrAddrAttrs aa
+        safePut at
+    getCopy = contain $ do
+        let label = Cereal.label "Pos.Core.Common.Address.Address:"
+        label $ Address <$> safeGet <*> getAttrAddrAttrs <*> safeGet
+    version = 0
+    kind = base
+    errorTypeName _ = "Pos.Core.Common.Address.Address"
+
 deriveSafeCopySimple 0 'base ''TxInWitness
 deriveSafeCopySimple 0 'base ''TxIn
 deriveSafeCopySimple 0 'base ''TxOut
