@@ -140,16 +140,18 @@ deriveSafeCopySimple 0 'base ''AddrType -- ☃
 deriveSafeCopySimple 0 'base ''AddrStakeDistribution
 deriveSafeCopySimple 0 'base ''AddrSpendingData
 
-instance {-# OVERLAPPING #-} SafeCopy (Attributes AddrAttributes) where
-    putCopy aaa = contain $ do
-        let bs = Bi.serialize aaa
+instance SafeCopy AddrAttributes where
+    -- Since there is only a Bi instance for (Attributes AddrAttributes),
+    -- we wrap our AddrAttributes before we serialize it.
+    putCopy aa = contain $ do
+        let bs = Bi.serialize (mkAttributes aa)
         safePut bs
 
     getCopy = contain $ do
         let label = Cereal.label "Pos.Core.Common.AddrAttributes.AddrAttributes:"
 
         let getLegacy =
-                (\apdp asd -> mkAttributes (AddrAttributes apdp asd NMNothing))
+                (\apdp asd -> AddrAttributes apdp asd NMNothing)
                     <$> safeGet
                     <*> safeGet
 
@@ -160,16 +162,16 @@ instance {-# OVERLAPPING #-} SafeCopy (Attributes AddrAttributes) where
         -- bytesLen == length of AddrAttributes bytestring
         bytesLen <- Cereal.lookAhead safeGet
         bytes <- BSL.fromStrict <$> Cereal.uncheckedLookAhead (fromIntegral bytesLen + 12)
-        let _aaVersionBytes  = BSL.take 4 bytes
-            addrAttrBytes    = BSL.drop 12 bytes
-        label $ if BSL.length addrAttrBytes /= bytesLen
+        let _aaaVersionBytes  = BSL.take 4 bytes
+            attrAddrAttrBytes = BSL.drop 12 bytes
+        label $ if BSL.length attrAddrAttrBytes /= bytesLen
                    then getLegacy
-                   else case Bi.decodeFull addrAttrBytes of
-                            Left _          -> getLegacy
-                            Right addrAttrs -> do
+                   else case Bi.decodeFull attrAddrAttrBytes of
+                            Left _              -> getLegacy
+                            Right attrAddrAttrs -> do
                                 -- seek ahead since we passed our bytes
                                 Cereal.uncheckedSkip (12 + fromIntegral bytesLen)
-                                pure addrAttrs
+                                pure (attrData attrAddrAttrs)
 
 deriveSafeCopySimple 0 'base ''Address'
 deriveSafeCopySimple 0 'base ''Address
@@ -374,7 +376,7 @@ instance (Bi (MerkleTree a), Typeable a) => SafeCopy (MerkleTree a) where
     getCopy = getCopyBi
     putCopy = putCopyBi
 
-instance {-# OVERLAPPABLE #-} SafeCopy h => SafeCopy (Attributes h) where
+instance SafeCopy h => SafeCopy (Attributes h) where
     getCopy =
         contain $
         do attrData <- safeGet
