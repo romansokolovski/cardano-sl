@@ -7,11 +7,17 @@ module Test.Pos.Core.ExampleHelpers
         , exampleAddress2
         , exampleAddress3
         , exampleAddress4
+        , exampleAddress5
+        , exampleAddress6
+        , exampleAddress7
         , exampleAddress'
         , exampleAddress'1
         , exampleAddress'2
         , exampleAddress'3
         , exampleAddress'4
+        , exampleAddress'5
+        , exampleAddress'6
+        , exampleAddress'7
         , exampleBlockVersion
         , exampleBlockVersionData0
         , exampleBlockVersionData1
@@ -747,6 +753,28 @@ exampleAddress4 = makeAddress easd attrs
     attrs = AddrAttributes Nothing (SingleKeyDistr sId) NMNothing
     [sId] = exampleStakeholderIds 7 1
 
+exampleAddress5 :: Address
+exampleAddress5 = makeAddress easd attrs
+  where
+    easd = ScriptASD exampleScript
+    attrs = AddrAttributes hap exampleMultiKeyDistr (NMJust 12345)
+    hap = Just (HDAddressPayload (getBytes 10 32))
+
+exampleAddress6 :: Address
+exampleAddress6 = makeAddress easd attrs
+  where
+    easd = UnknownASD 200 "test value"
+    attrs = AddrAttributes Nothing (SingleKeyDistr sId) (NMJust 31337)
+    [sId] = exampleStakeholderIds 10 1
+
+exampleAddress7 :: Address
+exampleAddress7 = makeAddress easd attrs
+  where
+    easd = PubKeyASD pk
+    [pk] = examplePublicKeys 16 1
+    attrs = AddrAttributes hap BootstrapEraDistr (NMJust (- 559038737))
+    hap = Nothing
+
 exampleAddress' :: Address'
 exampleAddress' = makeAddress' exampleAddrSpendingData_PubKey attrs
   where
@@ -782,6 +810,28 @@ exampleAddress'4 = makeAddress' easd attrs
     easd = UnknownASD 7 "test value"
     attrs = AddrAttributes Nothing (SingleKeyDistr sId) NMNothing
     [sId] = exampleStakeholderIds 7 1
+
+exampleAddress'5 :: Address'
+exampleAddress'5 = makeAddress' easd attrs
+  where
+    easd = ScriptASD exampleScript
+    attrs = AddrAttributes hap exampleMultiKeyDistr (NMJust 12345)
+    hap = Just (HDAddressPayload (getBytes 10 32))
+
+exampleAddress'6 :: Address'
+exampleAddress'6 = makeAddress' easd attrs
+  where
+    easd = UnknownASD 200 "test value"
+    attrs = AddrAttributes Nothing (SingleKeyDistr sId) (NMJust 31337)
+    [sId] = exampleStakeholderIds 10 1
+
+exampleAddress'7 :: Address'
+exampleAddress'7 = makeAddress' easd attrs
+  where
+    easd = PubKeyASD pk
+    [pk] = examplePublicKeys 16 1
+    attrs = AddrAttributes hap BootstrapEraDistr (NMJust (- 559038737))
+    hap = Nothing
 
 exampleMultiKeyDistr :: AddrStakeDistribution
 exampleMultiKeyDistr = case mkMultiKeyDistr (M.fromList pairs) of

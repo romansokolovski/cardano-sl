@@ -9,8 +9,10 @@ import           Pos.SafeCopy ()
 
 import           Test.Pos.Core.ExampleHelpers (exampleAddress, exampleAddress',
                      exampleAddress'1, exampleAddress'2, exampleAddress'3,
-                     exampleAddress'4, exampleAddress1, exampleAddress2,
-                     exampleAddress3, exampleAddress4)
+                     exampleAddress'4, exampleAddress'5, exampleAddress'6,
+                     exampleAddress'7, exampleAddress1, exampleAddress2,
+                     exampleAddress3, exampleAddress4, exampleAddress5,
+                     exampleAddress6, exampleAddress7)
 import           Test.Pos.Util.Golden (discoverGolden, goldenTestSafeCopy)
 
 --------------------------------------------------------------------------------
@@ -47,6 +49,24 @@ golden_Address4 =
         exampleAddress4
         "test/golden/safecopy/Address4"
 
+golden_Address5 :: Property
+golden_Address5 =
+    goldenTestSafeCopy
+        exampleAddress5
+        "test/golden/safecopy/Address5"
+
+golden_Address6 :: Property
+golden_Address6 =
+    goldenTestSafeCopy
+        exampleAddress6
+        "test/golden/safecopy/Address6"
+
+golden_Address7 :: Property
+golden_Address7 =
+    goldenTestSafeCopy
+        exampleAddress7
+        "test/golden/safecopy/Address7"
+
 --------------------------------------------------------------------------------
 -- Address'
 --------------------------------------------------------------------------------
@@ -80,6 +100,24 @@ golden_Address'4 =
     goldenTestSafeCopy
         exampleAddress'4
         "test/golden/safecopy/Address'4"
+
+golden_Address'5 :: Property
+golden_Address'5 =
+    goldenTestSafeCopy
+        exampleAddress'5
+        "test/golden/safecopy/Address'5"
+
+golden_Address'6 :: Property
+golden_Address'6 =
+    goldenTestSafeCopy
+        exampleAddress'6
+        "test/golden/safecopy/Address'6"
+
+golden_Address'7 :: Property
+golden_Address'7 =
+    goldenTestSafeCopy
+        exampleAddress'7
+        "test/golden/safecopy/Address'7"
 
 tests :: IO Bool
 tests = H.checkSequential $$discoverGolden
