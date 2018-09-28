@@ -7,6 +7,11 @@ module Test.Pos.Core.ExampleHelpers
         , exampleAddress2
         , exampleAddress3
         , exampleAddress4
+        , exampleAddress'
+        , exampleAddress'1
+        , exampleAddress'2
+        , exampleAddress'3
+        , exampleAddress'4
         , exampleBlockVersion
         , exampleBlockVersionData0
         , exampleBlockVersionData1
@@ -122,48 +127,57 @@ import qualified Serokell.Util.Base16 as B16
 import qualified Cardano.Crypto.Wallet as CC
 import           Pos.Binary.Class (Raw (..), asBinary)
 import           Pos.Core.Common (AddrAttributes (..), AddrSpendingData (..),
-                                  AddrStakeDistribution (..), Address (..), BlockCount (..),
-                                  ChainDifficulty (..), Coeff (..), Coin (..), CoinPortion (..),
-                                  IsBootstrapEraAddr (..), Script (..), ScriptVersion,
-                                  SharedSeed (..), SlotLeaders, StakeholderId, StakesList,
-                                  TxFeePolicy (..), TxSizeLinear (..), addressHash,
-                                  coinPortionDenominator, makeAddress, makePubKeyAddress,
-                                  mkMultiKeyDistr)
+                     AddrStakeDistribution (..), Address (..), Address' (..),
+                     BlockCount (..), ChainDifficulty (..), Coeff (..),
+                     Coin (..), CoinPortion (..), IsBootstrapEraAddr (..),
+                     Script (..), ScriptVersion, SharedSeed (..), SlotLeaders,
+                     StakeholderId, StakesList, TxFeePolicy (..),
+                     TxSizeLinear (..), addressHash, coinPortionDenominator,
+                     makeAddress, makeAddress', makePubKeyAddress, mkMultiKeyDistr)
 import           Pos.Core.Configuration
-import           Pos.Core.Delegation (HeavyDlgIndex (..), LightDlgIndices (..), ProxySKBlockInfo,
-                                      ProxySKHeavy)
-import           Pos.Core.Genesis (FakeAvvmOptions (..), GenesisAvvmBalances (..), GenesisData (..),
-                                   GenesisDelegation (..), GenesisInitializer (..),
-                                   GenesisNonAvvmBalances (..), GenesisProtocolConstants (..),
-                                   GenesisSpec (..), GenesisVssCertificatesMap (..),
-                                   GenesisWStakeholders (..), TestnetBalanceOptions (..))
+import           Pos.Core.Delegation (HeavyDlgIndex (..), LightDlgIndices (..),
+                     ProxySKBlockInfo, ProxySKHeavy)
+import           Pos.Core.Genesis (FakeAvvmOptions (..),
+                     GenesisAvvmBalances (..), GenesisData (..),
+                     GenesisDelegation (..), GenesisInitializer (..),
+                     GenesisNonAvvmBalances (..),
+                     GenesisProtocolConstants (..), GenesisSpec (..),
+                     GenesisVssCertificatesMap (..), GenesisWStakeholders (..),
+                     TestnetBalanceOptions (..))
 import           Pos.Core.NetworkMagic (NetworkMagic (..))
-import           Pos.Core.ProtocolConstants (ProtocolConstants, VssMaxTTL (..), VssMinTTL (..))
-import           Pos.Core.Slotting (EpochIndex (..), FlatSlotId, LocalSlotIndex (..), SlotId (..),
-                                    Timestamp (..))
-import           Pos.Core.Ssc (Commitment, CommitmentSignature, CommitmentsMap, InnerSharesMap,
-                               Opening, OpeningsMap, SharesDistribution, SignedCommitment,
-                               SscPayload (..), SscProof (..), VssCertificate (..),
-                               VssCertificatesHash, VssCertificatesMap (..), mkCommitmentsMap,
-                               mkVssCertificate, mkVssCertificatesMap, randCommitmentAndOpening)
-import           Pos.Core.Txp (Tx (..), TxAux (..), TxId, TxIn (..), TxInWitness (..), TxOut (..),
-                               TxPayload (..), TxProof (..), TxSig, TxSigData (..), TxWitness,
-                               mkTxPayload)
-import           Pos.Core.Update (ApplicationName (..), BlockVersion (..), BlockVersionData (..),
-                                  BlockVersionModifier (..), SoftforkRule (..),
-                                  SoftwareVersion (..), SystemTag (..), UpAttributes, UpId,
-                                  UpdateData (..), UpdatePayload (..), UpdateProof, UpdateProposal,
-                                  UpdateProposalToSign (..), UpdateVote (..), VoteId, mkUpdateProof,
-                                  mkUpdateProposalWSign, mkUpdateVoteSafe)
-import           Pos.Crypto (AbstractHash (..), EncShare (..), HDAddressPayload (..), Hash,
-                             ProtocolMagic (..), ProtocolMagicId (..), RedeemPublicKey,
-                             RedeemSignature, RequiresNetworkMagic (..), SafeSigner (..),
-                             Secret (..), SecretKey (..), SecretProof (..), SignTag (..),
-                             VssKeyPair, VssPublicKey (..), abstractHash, decryptShare,
-                             deterministic, deterministicVssKeyGen, hash, redeemDeterministicKeyGen,
-                             redeemSign, safeCreatePsk, sign, toVssPublicKey)
-import           Pos.Crypto.Signing (ProxyCert (..), ProxySecretKey (..), PublicKey (..),
-                                     RedeemPublicKey (..))
+import           Pos.Core.ProtocolConstants (ProtocolConstants, VssMaxTTL (..),
+                     VssMinTTL (..))
+import           Pos.Core.Slotting (EpochIndex (..), FlatSlotId,
+                     LocalSlotIndex (..), SlotId (..), Timestamp (..))
+import           Pos.Core.Ssc (Commitment, CommitmentSignature, CommitmentsMap,
+                     InnerSharesMap, Opening, OpeningsMap, SharesDistribution,
+                     SignedCommitment, SscPayload (..), SscProof (..),
+                     VssCertificate (..), VssCertificatesHash,
+                     VssCertificatesMap (..), mkCommitmentsMap,
+                     mkVssCertificate, mkVssCertificatesMap,
+                     randCommitmentAndOpening)
+import           Pos.Core.Txp (Tx (..), TxAux (..), TxId, TxIn (..),
+                     TxInWitness (..), TxOut (..), TxPayload (..),
+                     TxProof (..), TxSig, TxSigData (..), TxWitness,
+                     mkTxPayload)
+import           Pos.Core.Update (ApplicationName (..), BlockVersion (..),
+                     BlockVersionData (..), BlockVersionModifier (..),
+                     SoftforkRule (..), SoftwareVersion (..), SystemTag (..),
+                     UpAttributes, UpId, UpdateData (..), UpdatePayload (..),
+                     UpdateProof, UpdateProposal, UpdateProposalToSign (..),
+                     UpdateVote (..), VoteId, mkUpdateProof,
+                     mkUpdateProposalWSign, mkUpdateVoteSafe)
+import           Pos.Crypto (AbstractHash (..), EncShare (..),
+                     HDAddressPayload (..), Hash, ProtocolMagic (..),
+                     ProtocolMagicId (..), RedeemPublicKey, RedeemSignature,
+                     RequiresNetworkMagic (..), SafeSigner (..), Secret (..),
+                     SecretKey (..), SecretProof (..), SignTag (..),
+                     VssKeyPair, VssPublicKey (..), abstractHash, decryptShare,
+                     deterministic, deterministicVssKeyGen, hash,
+                     redeemDeterministicKeyGen, redeemSign, safeCreatePsk,
+                     sign, toVssPublicKey)
+import           Pos.Crypto.Signing (ProxyCert (..), ProxySecretKey (..),
+                     PublicKey (..), RedeemPublicKey (..))
 import           Pos.Data.Attributes (Attributes, mkAttributes)
 import           Pos.Merkle (mkMerkleTree, mtRoot)
 
@@ -728,6 +742,42 @@ exampleAddress3 = makeAddress easd attrs
 
 exampleAddress4 :: Address
 exampleAddress4 = makeAddress easd attrs
+  where
+    easd = UnknownASD 7 "test value"
+    attrs = AddrAttributes Nothing (SingleKeyDistr sId) NMNothing
+    [sId] = exampleStakeholderIds 7 1
+
+exampleAddress' :: Address'
+exampleAddress' = makeAddress' exampleAddrSpendingData_PubKey attrs
+  where
+    attrs = AddrAttributes hap BootstrapEraDistr NMNothing
+    hap = Just (HDAddressPayload (getBytes 32 32))
+
+exampleAddress'1 :: Address'
+exampleAddress'1 = makeAddress' easd attrs
+  where
+    easd = PubKeyASD pk
+    [pk] = examplePublicKeys 24 1
+    attrs = AddrAttributes hap BootstrapEraDistr NMNothing
+    hap = Nothing
+
+exampleAddress'2 :: Address'
+exampleAddress'2 = makeAddress' easd attrs
+  where
+    easd = RedeemASD exampleRedeemPublicKey
+    attrs = AddrAttributes hap asd NMNothing
+    hap = Just (HDAddressPayload (getBytes 15 32))
+    asd = SingleKeyDistr exampleStakeholderId
+
+exampleAddress'3 :: Address'
+exampleAddress'3 = makeAddress' easd attrs
+  where
+    easd = ScriptASD exampleScript
+    attrs = AddrAttributes hap exampleMultiKeyDistr NMNothing
+    hap = Just (HDAddressPayload (getBytes 17 32))
+
+exampleAddress'4 :: Address'
+exampleAddress'4 = makeAddress' easd attrs
   where
     easd = UnknownASD 7 "test value"
     attrs = AddrAttributes Nothing (SingleKeyDistr sId) NMNothing
