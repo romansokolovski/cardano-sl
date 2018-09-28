@@ -140,65 +140,39 @@ deriveSafeCopySimple 0 'base ''AddrType -- ☃
 deriveSafeCopySimple 0 'base ''AddrStakeDistribution
 deriveSafeCopySimple 0 'base ''AddrSpendingData
 
-putAttrAddrAttrs :: Attributes AddrAttributes -> Cereal.Put
-putAttrAddrAttrs aaa = do
-    let bs = Bi.serialize aaa
-        len = BSL.length bs
-    -- trace ("put len: " <> show len :: Text) $ safePut len
-    trace ("put bs: " <> show bs :: Text) $ safePut bs
+instance {-# OVERLAPPING #-} SafeCopy (Attributes AddrAttributes) where
+    putCopy aaa = contain $ do
+        let bs = Bi.serialize aaa
+        safePut bs
 
-getAttrAddrAttrs :: Cereal.Get (Attributes AddrAttributes)
-getAttrAddrAttrs = do
-    let label = Cereal.label "Pos.Core.Common.AddrAttributes.AddrAttributes:"
-
-    let getLegacy =
-            (\apdp asd -> mkAttributes (AddrAttributes apdp asd NMNothing))
-                <$> safeGet
-                <*> safeGet
-
-    -- ByteStrings are prefixed with a Int64 length. We cheat here and read the length as
-    -- thought it were a safePut-encoded Int64, so we know how long the ByteString will be.
-    --
-    -- 4[version] + 8[Int64] + <bytesLen>
-    -- bytesLen == length of AddrAttributes bytestring
-    bytesLen <- (\x -> trace ("get len: " <> show x :: Text) x) <$> Cereal.lookAhead safeGet
-    bytes <- (\x -> trace ("get bytes: " <> show x <> " of len " <> show (BSL.length x) :: Text) x) <$> BSL.fromStrict <$> Cereal.uncheckedLookAhead (fromIntegral bytesLen + 12)
-    let _aaVersionBytes  = BSL.take 4 bytes
-        addrAttrBytes    = BSL.drop 12 bytes
-    label $ if BSL.length addrAttrBytes /= bytesLen
-               then trace ("not enough bytes" :: Text) getLegacy
-               else case Bi.decodeFull addrAttrBytes of
-                        Left err        -> trace (("bad decode" <> show err) :: Text) getLegacy
-                        Right addrAttrs -> do
-                            -- seek ahead since we passed our bytes
-                            Cereal.uncheckedSkip (12 + fromIntegral bytesLen)
-                            pure addrAttrs
-
-instance SafeCopy Address' where
-    putCopy (Address' (at, asd, aa)) = contain $ do
-        -- SafeCopy instances for a triple (,,) is a series of puts
-        safePut at
-        safePut asd
-        putAttrAddrAttrs aa
     getCopy = contain $ do
-        let label = Cereal.label "Pos.Core.Common.Address.Address':"
-        label $ Address' <$> liftM3 (,,) safeGet safeGet getAttrAddrAttrs
-    version = 0
-    kind = base
-    errorTypeName _ = "Pos.Core.Common.Address.Address'"
+        let label = Cereal.label "Pos.Core.Common.AddrAttributes.AddrAttributes:"
 
-instance SafeCopy Address where
-    putCopy (Address ar aa at) = contain $ do
-        safePut ar
-        putAttrAddrAttrs aa
-        safePut at
-    getCopy = contain $ do
-        let label = Cereal.label "Pos.Core.Common.Address.Address:"
-        label $ Address <$> safeGet <*> getAttrAddrAttrs <*> safeGet
-    version = 0
-    kind = base
-    errorTypeName _ = "Pos.Core.Common.Address.Address"
+        let getLegacy =
+                (\apdp asd -> mkAttributes (AddrAttributes apdp asd NMNothing))
+                    <$> safeGet
+                    <*> safeGet
 
+        -- ByteStrings are prefixed with a Int64 length. We cheat here and read the length as
+        -- thought it were a safePut-encoded Int64, so we know how long the ByteString will be.
+        --
+        -- 4[version] + 8[Int64] + <bytesLen>
+        -- bytesLen == length of AddrAttributes bytestring
+        bytesLen <- Cereal.lookAhead safeGet
+        bytes <- BSL.fromStrict <$> Cereal.uncheckedLookAhead (fromIntegral bytesLen + 12)
+        let _aaVersionBytes  = BSL.take 4 bytes
+            addrAttrBytes    = BSL.drop 12 bytes
+        label $ if BSL.length addrAttrBytes /= bytesLen
+                   then getLegacy
+                   else case Bi.decodeFull addrAttrBytes of
+                            Left _          -> getLegacy
+                            Right addrAttrs -> do
+                                -- seek ahead since we passed our bytes
+                                Cereal.uncheckedSkip (12 + fromIntegral bytesLen)
+                                pure addrAttrs
+
+deriveSafeCopySimple 0 'base ''Address'
+deriveSafeCopySimple 0 'base ''Address
 deriveSafeCopySimple 0 'base ''TxInWitness
 deriveSafeCopySimple 0 'base ''TxIn
 deriveSafeCopySimple 0 'base ''TxOut
@@ -400,7 +374,7 @@ instance (Bi (MerkleTree a), Typeable a) => SafeCopy (MerkleTree a) where
     getCopy = getCopyBi
     putCopy = putCopyBi
 
-instance SafeCopy h => SafeCopy (Attributes h) where
+instance {-# OVERLAPPABLE #-} SafeCopy h => SafeCopy (Attributes h) where
     getCopy =
         contain $
         do attrData <- safeGet
