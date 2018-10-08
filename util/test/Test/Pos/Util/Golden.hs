@@ -3,7 +3,7 @@ module Test.Pos.Util.Golden where
 import           Universum
 
 import           Data.Aeson (FromJSON, ToJSON, eitherDecode)
-import           Data.Aeson.Encode.Pretty (encodePretty)
+import           Data.Aeson.Encode.Pretty
 import qualified Data.ByteString.Lazy as LB
 import           Data.FileEmbed (embedStringFile)
 import qualified Data.List as List
@@ -41,12 +41,17 @@ goldenTestJSON :: (Eq a, FromJSON a, HasCallStack, Show a, ToJSON a)
 goldenTestJSON x path = withFrozenCallStack $ do
     withTests 1 . property $ do
         bs <- liftIO (LB.readFile path)
-        encodePretty x === bs
+        -- Sort keys by their order of appearance in the argument list
+        -- of `keyOrder`. Keys not in the argument list are moved to the
+        -- end, while their order is preserved.
+        let defConfig' = Config { confIndent = Spaces 4
+                                , confCompare = keyOrder ["file", "hash"]
+                                , confNumFormat = Generic
+                                , confTrailingNewline = False }
+        encodePretty' defConfig' x === bs
         case eitherDecode bs of
             Left err -> failWith Nothing $ "could not decode: " <> show err
             Right x' -> x === x'
-
--- TODO: Need to show that `encodePretty` and aeson `encode` are equivalent
 
 -- | Only check that the datatype equals the decoding of the file
 goldenTestJSONDec :: (Eq a, FromJSON a, HasCallStack, Show a)
