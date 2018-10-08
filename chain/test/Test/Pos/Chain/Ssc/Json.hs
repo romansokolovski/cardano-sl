@@ -24,9 +24,9 @@ golden_AttackTarget_NetworkAddressTarget :: Property
 golden_AttackTarget_NetworkAddressTarget =
     goldenTestJSON exampleAttackTarget_NetworkAddressTarget
         "test/golden/AttackTarget_NetworkAddressTarget"
-  where
-    exampleAttackTarget_NetworkAddressTarget =
-        NetworkAddressTarget ("ggv", 32313)
+
+exampleAttackTarget_NetworkAddressTarget :: AttackTarget
+exampleAttackTarget_NetworkAddressTarget = NetworkAddressTarget ("ggv", 32313)
 
 
 golden_AttackTarget_PubKeyAddressTarget :: Property
