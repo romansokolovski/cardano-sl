@@ -246,6 +246,7 @@ instance HasConfigurations =>
 makePubKeyAddressAuxx :: MonadAuxxMode m => SlotCount -> PublicKey -> m Address
 makePubKeyAddressAuxx epochSlots pk = do
     epochIndex <- siEpoch <$> getCurrentSlotInaccurate epochSlots
+    -- INFO mhueschen | possible leak of unlockStakeEpoch
     ibea <- IsBootstrapEraAddr <$> gsIsBootstrapEra epochIndex
     pure $ makePubKeyAddress ibea pk
 
