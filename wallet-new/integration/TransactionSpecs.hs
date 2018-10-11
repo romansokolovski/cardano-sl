@@ -232,6 +232,67 @@ transactionSpecs wRef wc = beforeAll_ (setupLogging "wallet-new_transactionSpecs
             let utxoStatisticsExpected = computeUtxoStatistics log10 utxos
             liftIO $ utxoStatistics `shouldBe` utxoStatisticsExpected
 
+        randomTest "create unsigned transaction, sign it and publish it in the blockchain" 1 $ do
+            genesis <- run $ genesisWallet wc
+            (fromAcct, _) <- run $ firstAccountAndId wc genesis
+
+            log $ show fromAcct
+
+            wallet <- run $ sampleWallet wRef wc
+            (_toAcct, toAddr) <- run $ firstAccountAndId wc wallet
+
+            let payment = Payment
+                    { pmtSource =  PaymentSource
+                        { psWalletId = walId genesis
+                        , psAccountIndex = accIndex fromAcct
+                        }
+                    , pmtDestinations = pure PaymentDistribution
+                        { pdAddress = addrId toAddr
+                        , pdAmount = V1 (Core.mkCoin 10)
+                        }
+                    , pmtGroupingPolicy = Nothing
+                    , pmtSpendingPassword = Nothing
+                    }
+
+            etxn <- run $ postUnsignedTransaction wc payment
+
+            -- txn <- run $ fmap wrData etxn `shouldPrism` _Right
+            unsignedTx <- run $ fmap wrData etxn `shouldPrism` _Right
+
+            -- Now we have unsigned transaction, let's sign it (as if Ledger device did it).
+            -- There's only one input for this transaction, so we should provide only one
+            -- proof for this input.
+            let UnsignedTransaction txInHexFormat txSigDataInHexFormat = unsignedTx
+                Right tx = B16.decode txInHexFormat
+                -- Hash of transaction should be signed by derived SK.
+                txHash = hash tx
+                -- Value of protocolMagic is taken from lib/configuration.yaml.
+                protocolMagic = Core.ProtocolMagic 55550001
+                Signature txSignature = signEncoded protocolMagic
+                                                    SignTx
+                                                    derivedSK
+                                                    txHash
+                rawSignature = CC.unXSignature txSignature
+                txSignatureInHexFormat = B16.encode rawSignature
+                derivedPKInBase58Format = encodeBase58PublicKey derivedPK
+                srcWalletAddressAsBase58 = Core.addrToBase58Text fromAddress
+                inputProof = AddressWithProof srcWalletAddressAsBase58
+                                              txSignatureInHexFormat
+                                              derivedPKInBase58Format
+                signedTx = SignedTransaction txInHexFormat [inputProof]
+                -- We have to check address and signature.
+                addressCreatedFromThisPK = Core.checkPubKeyAddress derivedPK fromAddress
+                txSignatureIsValid = checkSigRaw protocolMagic
+                                                 (Just SignTx)
+                                                 derivedPK
+                                                 txSigDataAsBytes
+                                                 (Signature txSignature)
+
+            addressCreatedFromThisPK `shouldBe` True
+            txSignatureIsValid `shouldBe` True
+
+            -- Now we have signed transaction, let's publish it in the blockchain.
+            --void $ shouldReturnRight $ postSignedTransaction wc signedTx
   where
     makePayment
         :: Core.Coin
